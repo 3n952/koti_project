@@ -4,8 +4,7 @@ from datetime import datetime
 import geopandas as gpd
 from shapely.geometry import Point, LineString
 from collections import defaultdict
-from utils import dt2unix, ymd_spliter
-import matplotlib.pyplot as plt
+from utils import dt2unix, ymd_spliter, get_weekdays_in_same_week
 
 class AccidentDataPreprocessing():
     '''
@@ -17,12 +16,12 @@ class AccidentDataPreprocessing():
         moct_network_path: moct link 데이터 로컬 파일 경로
     '''
 
-    def __init__(self, tass_data_path, ps_data_path, moct_network_path):
+    def __init__(self, tass_data_path, ps_data_path, moct_network_path, preprocessing_on_local = False):
         self.tass_data_path = tass_data_path
         self.ps_data_path = ps_data_path
         self.moct_network_path = moct_network_path
+        self.preprocessing_on_local = preprocessing_on_local
 
-    @property
     def moct_network2gdf(self):
         moct_network_link_gdf = gpd.read_file(self.moct_network_path, encoding='euc-kr')
         moct_network_link_gdf = moct_network_link_gdf[['link_id', 'road_rank', 'sido_id', 'sgg_id','geometry']]
@@ -30,9 +29,7 @@ class AccidentDataPreprocessing():
 
         # 서울시 필터링
         self.moct_link_gdf = moct_network_link_gdf[moct_network_link_gdf['sido_id'] == 11000]
-        return self.moct_link_gdf
     
-    @property
     def ps_data2gdf(self):
         '''
         ps 데이터를 이미 전처리하여 특정 구역에 대한 ex)서울 ps 데이터를 gdf로 변환
@@ -44,10 +41,11 @@ class AccidentDataPreprocessing():
         self.ps_gdf = gpd.GeoDataFrame(ps_dataset, geometry=gpd.points_from_xy(ps_dataset['pointX'],
                                                                                 ps_dataset['pointY']), 
                                                                                 crs="EPSG:5179")
+        self.ps_gdf = self.ps_gdf[self.ps_gdf['link_id'] != -1]
         self.ps_gdf['link_id'] = self.ps_gdf['link_id'].astype(str)
+
         return self.ps_gdf
     
-    @property
     def tass_data2gdf(self):
         tass_dataset = pd.read_csv(self.tass_data_path)
         tass_df = tass_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
@@ -69,13 +67,12 @@ class AccidentDataPreprocessing():
         # 조건 필터링 - 서울 / 중상,사망 사고 / 승용, 승합, 화물
         tass_df = tass_df[tass_df['legaldong_name'] == '서울특별시']
         tass_df = tass_df[(tass_df['acdnt_gae_dc'].isin(['중상사고', '사망사고']))]
-        self.tass_df = tass_df[(tass_df['wrngdo_vhcle_asort_dc'].isin(['승용', '승합', '화물'])) & 
+        self.tass_df = tass_df[(tass_df['wrngdo_vhcle_asort_dc'].isin(['승용', '승합', '화물'])) | 
                                           (tass_df['dmge_vhcle_asort_dc'].isin(['승용', '승합', '화물']))]
 
-        return self.tass_df 
     
-    def tass_sampling(self, ymd = '20231211'):
-        
+    def tass_sampling(self, ymd):
+        ymd = self.tass_data_path.split('/')[1].split('.')[0][-6:]
         y,m,d = ymd_spliter(ymd)
         # 시간 필터링 -> 비교 moct dtg가 
         # 하루에 대한 값
@@ -87,7 +84,8 @@ class AccidentDataPreprocessing():
                                           geometry=gpd.points_from_xy(tass_sample_df['x_crdnt_crdnt'], 
                                                                       tass_sample_df['y_crdnt_crdnt']), 
                                                                       crs="EPSG:5179")
-        return self.tass_sample_gdf
+        
+        self.tass_sample_gdf.head()
     
     def merge_link_ps(self):
         '''
@@ -102,9 +100,10 @@ class AccidentDataPreprocessing():
         self.link_ps_merge_gdf = self.link_ps_merge_gdf[['link_id', 'trip_id', 'pointTime','speed', 'geometry_x']]
         self.link_ps_merge_gdf = self.link_ps_merge_gdf.rename(columns={'geometry_x': 'geometry'})
 
-        return self.link_ps_merge_gdf
-
     def link_ps_merge_sampling(self):
+        '''
+        merge_link_ps의 df에서 메모리를 효율을 위해 사고 시간단위의 앞뒤 30분을 필터링
+        '''
         tass_sample_timestamp = self.tass_sample_gdf['unixtime']
 
         uptime = tass_sample_timestamp + 5400
@@ -115,6 +114,38 @@ class AccidentDataPreprocessing():
         link_ps_merge_near_acctime_gdf = self.link_ps_merge_gdf[self.link_ps_merge_gdf['pointTime'].between(downtime, uptime)]
 
         return link_ps_merge_near_acctime_gdf
+    
+    def merge_remain_days(self, remain_ps_data_path):
+        if self.preprocessing_on_local:
+            self.merge_remain_days_df = gpd.GeoDataFrame(columns=['trip_id', 'reliability2', 'mathcingRate', 'pointTime', 
+                                            'pointX', 'pointY', 'link_id', 'speed', 'geometry'])
+            input_date_str = self.ps_data_path.split('/')[1].split('_')[:-5]
+            daystr_ofweeks = get_weekdays_in_same_week(input_date_str)
+            for date in daystr_ofweeks:
+                new_date_str = date.strftime("%Y%m%d")
+                self.ps_data_path = f'traj_sample/alltraj_{new_date_str}.txt'
+                new_ps_gdf = self.ps_data2gdf()
+                self.merge_remain_days_df = pd.concat([self.merge_remain_days_df, new_ps_gdf], ignore_index=True)
+            # 평일 / 주말 link_id 별 
+        
+        else:
+            remain_ps_data= pd.read_csv(remain_ps_data_path, 
+                                  names = ['trip_id', 'reliability2', 'mathcingRate', 'pointTime', 
+                                           'pointX', 'pointY', 'link_id', 'speed'])
+            remain_ps_df = gpd.GeoDataFrame(remain_ps_data, geometry=gpd.points_from_xy(remain_ps_data['pointX'],
+                                                                                remain_ps_data['pointY']), 
+                                                                                crs="EPSG:5179")
+            remain_ps_df = remain_ps_df[remain_ps_df['link_id'] != -1]
+            remain_ps_df['link_id'] = remain_ps_df['link_id'].astype(str)
+
+            daystr_ofweeks = get_weekdays_in_same_week(input_date_str)
+            for date in daystr_ofweeks:
+                new_date_str = date.strftime("%Y%m%d")
+                self.ps_data_path = f'traj_sample/alltraj_{new_date_str}.txt'
+                new_ps_gdf = self.ps_data2gdf()
+                self.merge_remain_days_df = pd.concat([self.merge_remain_days_df, new_ps_gdf], ignore_index=True)
+        
+        return self.merge_remain_days_df
 
 
 class AccidentMatching():
@@ -124,7 +155,7 @@ class AccidentMatching():
     def extract_link_candidate(self, tass_sample_gdf, moct_link_gdf):
         final_candidate_links = defaultdict(list)
 
-        def find_link_candidate(accident_point, road_gdf, radius=300):
+        def find_link_candidate(accident_point, road_gdf: gpd.GeoDataFrame, radius=300):
             """
             사고 위치와 가까운 도로 링크 후보 찾는 함수 (도로 전체가 반경 내에 존재하는지 확인)
 
@@ -168,8 +199,6 @@ class AccidentMatching():
         # 10분 간격으로 몇 번째 구간(인덱스)에 속하는지 계산
         ps_on_candidate_links_gdf['time_bin_index'] = ((ps_on_candidate_links_gdf['pointTime'] - sample_time) // 600).astype(int)  # 10분(600초) 단위
         self.ps_on_candidate_links_with_timebin_gdf = ps_on_candidate_links_gdf[ps_on_candidate_links_gdf['time_bin_index'].between(-3,9)]
-
-        return self.ps_on_candidate_links_with_timebin_gdf
     
     def candidate_link_score(self):
         # 2시간 단위 기준 속도 95% 백분위수 계산
@@ -185,19 +214,6 @@ class AccidentMatching():
         self.link_score_df = link_median_df.merge(link_percentile95_df, on='link_id', how='inner')
         self.link_score_df['score'] = self.link_score_df['median'] / self.link_score_df['percentile95']
     
-    def visualize_candidate_links(self, tass_sample_gdf, link_filtered, link_ps_merge_filtered):
-        tass_sample_gdf['buffer'] = tass_sample_gdf.geometry.buffer(300)
-
-        # 시각화
-        fig, ax = plt.subplots(figsize=(10, 8))
-        link_filtered.plot(ax=ax, color='black', linewidth=2, alpha=0.2, label="Seoul Link")
-        link_ps_merge_filtered.plot(ax=ax, color='green', markersize=1, alpha=0.7, label="DTG Trajectory")
-        tass_sample_gdf.plot(ax=ax, color='red', markersize=10, label="accident (Point)")
-        tass_sample_gdf['buffer'].plot(ax=ax, color='blue', alpha=0.3, edgecolor='blue')
-
-        plt.legend()
-        plt.title("candidate Link")
-        plt.xlabel("x")
-        plt.ylabel("y")
-        plt.show()
+    def compare_score_per_days(self, ps_data_path):
+        pass
 

@@ -1,23 +1,39 @@
 from accident_matching import AccidentMatching, AccidentDataPreprocessing
 
-if __name__ == '__main__':
 
+class AccidentMapMatchingProcess(AccidentDataPreprocessing, AccidentMatching):
+    def __init__(self, tass_data_path, ps_data_path, moct_network_path):
+        AccidentDataPreprocessing.__init__(self, tass_data_path, ps_data_path, moct_network_path)
+        AccidentMatching.__init__(self)
+    
+    def run(self):
+        self.moct_network2gdf()
+        self.ps_data2gdf()
+        self.tass_data2gdf()
+        self.tass_sampling(ymd='20231211')
+        self.merge_link_ps()
+        ps_near_acctime_in_seoul_gdf = self.link_ps_merge_sampling()
+
+        self.candidate_links_with_timebin(
+            tass_sample_gdf=self.tass_sample_gdf, 
+            moct_link_gdf=self.moct_link_gdf, 
+            link_ps_merge_near_acctime_gdf=ps_near_acctime_in_seoul_gdf
+        )
+
+        # 사고 시간이 해당되는 날에 대한 link score
+        self.candidate_link_score()
+
+        print(link_score)
+
+
+def main():
     tass_data_path = 'tass_dataset/tass_2019_to_2023_241212.csv'
     ps_data_path = 'traj_sample/taxi_20231211.txt'
-    moct_network_path = r'D:\traffic_metric_backup\network\LINK_2024'
+    moct_network_path = 'moct_link/link'
 
-    seoul_data = AccidentDataPreprocessing(tass_data_path, ps_data_path, moct_network_path)
+    accidentlinkmatching = AccidentMapMatchingProcess(tass_data_path, ps_data_path, moct_network_path)
+    accidentlinkmatching.run()
 
-    seoul_link_gdf = seoul_data.moct_network2gdf
-    korea_ps_gdf = seoul_data.ps_data2gdf
-    seoul_tass_gdf = seoul_data.tass_data2gdf
 
-    seoul_tass_sample_gdf = seoul_data.tass_sampling()
-    seoul_ps_gdf = seoul_data.merge_link_ps()
-    ps_near_acctime_in_seoul_gdf = seoul_data.link_ps_merge_sampling()
-
-    accident_matching_process = AccidentMatching()
-    link_candidate = accident_matching_process.extract_link_candidate(seoul_tass_sample_gdf, seoul_link_gdf)
-    link_score = accident_matching_process.candidate_link_score()
-
-    print(link_candidate)
+if __name__ == '__main__':
+    main()
