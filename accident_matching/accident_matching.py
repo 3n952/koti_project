@@ -8,7 +8,7 @@ import logging
 import math 
 from typing import Generator
 
-from utils import dt2unix, ymd_spliter, get_weekdays_in_same_week, corresponding_sample_timecode_unixtime
+from utils import dt2unix, ymd_spliter, corresponding_sample_timecode_unixtime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -151,18 +151,8 @@ class AccidentDataPreprocessing:
         '''
         # 사고가 난 날 이외의 날에 대한 trajectory를 로컬에서 처리하는 경우
         if preprocessing_on_local:
-            # input_date_str = self.ps_data_path.split('/')[1].split('_')[1][:-4]
-            # daystr_ofweeks = get_weekdays_in_same_week(input_date_str) # datetime 반환
-            # for date in daystr_ofweeks:
-            #     new_date_str = date.strftime("%Y%m%d")
-            #     self.ps_data_path = rf'D:\traj_samples\alltraj_{new_date_str}.txt'
-            #     new_unixtime = corresponding_sample_timecode_unixtime(new_date_str, self.timecode)
-            #     self.redefine_timerange(new_unixtime)
-            #     for link_ps_merge_near_acctime_gdf_chunk in self.link_ps_merge_sampling():
-            #         yield link_ps_merge_near_acctime_gdf_chunk
             new_unixtime = corresponding_sample_timecode_unixtime(new_date_str, self.timecode)
             self.redefine_timerange(new_unixtime)
-            print(self.timecode, self.downtime, self.uptime)
             for link_ps_merge_near_acctime_gdf_chunk in self.link_ps_merge_sampling():
                 yield link_ps_merge_near_acctime_gdf_chunk
         else:
@@ -212,13 +202,12 @@ class AccidentMatching():
         final_candidate_links = self.extract_link_candidate(tass_sample_gdf, moct_link_gdf)
         self.candidate_links = set(final_candidate_links.keys())
 
-    def candidate_links_with_timebin(self, tass_sample_gdf, link_ps_merge_near_acctime_gdf):
+    def candidate_links_with_timebin(self, new_timestamp, link_ps_merge_near_acctime_gdf):
         self.ps_on_candidate_links_gdf = link_ps_merge_near_acctime_gdf[link_ps_merge_near_acctime_gdf['link_id'].isin(self.candidate_links)]
-        sample_time = tass_sample_gdf['unixtime'].values
         ps_on_candidate_links_gdf = self.ps_on_candidate_links_gdf.copy() 
     
         # 10분 간격으로 몇 번째 구간(인덱스)에 속하는지 계산
-        ps_on_candidate_links_gdf['time_bin_index'] = ((ps_on_candidate_links_gdf['pointTime'] - sample_time) // 600).astype(int)  # 10분(600초) 단위
+        ps_on_candidate_links_gdf['time_bin_index'] = ((ps_on_candidate_links_gdf['pointTime'] - new_timestamp) // 600).astype(int)  # 10분(600초) 단위
         ps_on_candidate_links_gdf[ps_on_candidate_links_gdf['time_bin_index'].between(-3,9)]
 
         return ps_on_candidate_links_gdf
