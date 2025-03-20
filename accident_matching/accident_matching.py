@@ -4,8 +4,13 @@ from datetime import datetime
 import geopandas as gpd
 from shapely.geometry import Point, LineString
 from collections import defaultdict
+import logging
+import math 
+from typing import Generator
+
 from utils import dt2unix, ymd_spliter, get_weekdays_in_same_week, corresponding_sample_timecode_unixtime
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 class AccidentDataPreprocessing:
     '''
@@ -25,12 +30,15 @@ class AccidentDataPreprocessing:
         self.init_tass_data2gdf()
 
     def init_moct_network2gdf(self):
+        logging.info("MOCT 네트워크 데이터 로드 중..")
         moct_network_link_gdf = gpd.read_file(self.moct_network_path, encoding='euc-kr')
         moct_network_link_gdf = moct_network_link_gdf[['link_id', 'road_rank', 'sido_id', 'sgg_id','geometry']]
         moct_network_link_gdf.set_crs(epsg=5179, inplace=True)
 
         # 지역 필터링 (서울시)
         self.moct_link_gdf = moct_network_link_gdf[moct_network_link_gdf['sido_id'] == 11000]
+
+        logging.info("MOCT 네트워크 데이터 로드 완료")
     
     def ps_data2gdf(self, chunksize=10000000):
         '''
@@ -54,15 +62,8 @@ class AccidentDataPreprocessing:
 
             yield ps_gdf  # 제네레이터로 반환
 
-            # self.ps_gdf = gpd.GeoDataFrame(ps_dataset, geometry=gpd.points_from_xy(ps_dataset['pointX'],
-            #                                                                         ps_dataset['pointY']), 
-            #                                                                         crs="EPSG:5179")
-            # self.ps_gdf = self.ps_gdf[self.ps_gdf['link_id'] != -1]
-            # self.ps_gdf['link_id'] = self.ps_gdf['link_id'].astype(str)
-
-            # yield self.ps_gdf
-    
     def init_tass_data2gdf(self):
+        logging.info("사고 데이터(taas) 로드 중..")
         tass_dataset = pd.read_csv(self.tass_data_path)
         tass_df = tass_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
                                         'y_crdnt_crdnt', 'acdnt_gae_dc', 'wrngdo_vhcle_asort_dc', 
@@ -76,17 +77,19 @@ class AccidentDataPreprocessing:
         
         # 날짜와 시간을 결합하여 datetime 형식 변환
         tass_df.loc[:, 'datetime'] = pd.to_datetime(tass_df['acdnt_dd_dc'] + ' ' + 
-                                                            tass_df['occrrnc_time_dc'] + ':00:00') # unixtime 변환 (초 단위)
-        tass_df.loc[:, 'unixtime']  = tass_df['datetime'].astype('int64') // 10**9  # 초 단위로 변환
-        tass_df.loc[:, 'unixtime']  = tass_df['unixtime'] - 9 * 3600 # KST 기준 맞추기
+                                                            tass_df['occrrnc_time_dc'] + ':00:00') # unixtime 변환
+        tass_df.loc[:, 'unixtime']  = tass_df['datetime'].astype('int64') // 10**9 - (9 * 3600) # KST 기준 맞추기
 
         # 조건 필터링 - 서울 / 중상,사망 사고 / 승용, 승합, 화물
         tass_df = tass_df[tass_df['legaldong_name'] == '서울특별시']
         tass_df = tass_df[(tass_df['acdnt_gae_dc'].isin(['중상사고', '사망사고']))]
         self.tass_df = tass_df[(tass_df['wrngdo_vhcle_asort_dc'].isin(['승용', '승합', '화물'])) | 
                                           (tass_df['dmge_vhcle_asort_dc'].isin(['승용', '승합', '화물']))]
+        
+        logging.info("사고 데이터(taas) 로드 완료")
 
         self.tass_sampling()
+        logging.info(f"사고 데이터(taas) 샘플 추출 완료\n<====================사고 샘플 데이터 info====================>{self.tass_sample_gdf}")
 
     def tass_sampling(self):
         ymd = self.ps_data_path.split('/')[1].split('.')[0][-8:]
@@ -115,21 +118,13 @@ class AccidentDataPreprocessing:
     def redefine_timerange(self, unixtime):
         self.uptime = unixtime + 5400
         self.downtime = unixtime - 1800
+        self.new_timestamp = unixtime
 
     def merge_link_ps(self):
         '''
         국내 전체에 분포된 ps 포인트를 관심영역을 지정한 link에 매칭
         '''
-        # common_link_ids = set(self.ps_gdf['link_id']) & set(self.moct_link_gdf['link_id'])
-
-        # if len(common_link_ids) > 0:
-        #     self.link_ps_merge_gdf = pd.merge(self.ps_gdf, self.moct_link_gdf, on='link_id', how='inner')
-        
-        # # 결합 후 필요 컬럼 남기기 + 이름 바꾸기
-        # self.link_ps_merge_gdf = self.link_ps_merge_gdf[['link_id', 'trip_id', 'pointTime','speed', 'geometry_x']]
-        # self.link_ps_merge_gdf = self.link_ps_merge_gdf.rename(columns={'geometry_x': 'geometry'})
-
-        for ps_chunk_df in self.ps_data2gdf(chunksize=10000):
+        for ps_chunk_df in self.ps_data2gdf():
             link_ps_merge_gdf = pd.merge(ps_chunk_df, self.moct_link_gdf, on='link_id', how='inner')
             link_ps_merge_gdf = link_ps_merge_gdf[['link_id', 'trip_id', 'pointTime','speed', 'geometry_x']]
             link_ps_merge_gdf = link_ps_merge_gdf.rename(columns={'geometry_x': 'geometry'})
@@ -142,11 +137,10 @@ class AccidentDataPreprocessing:
         '''
         for link_ps_merge_chunk_gdf in self.merge_link_ps():
             link_ps_merge_near_acctime_gdf = link_ps_merge_chunk_gdf[link_ps_merge_chunk_gdf['pointTime'].between(self.downtime, self.uptime)]
-
             yield link_ps_merge_near_acctime_gdf
 
     
-    def remain_days_traj(self, preprocessing_on_local, remain_ps_data_path=None):
+    def remain_days_traj(self, new_date_str, preprocessing_on_local) -> Generator[gpd.GeoDataFrame, None, None]:
         '''
         평일 or 주말에 대한 trajectory를 반환하는 제너레이터 함수
         Args:
@@ -157,40 +151,22 @@ class AccidentDataPreprocessing:
         '''
         # 사고가 난 날 이외의 날에 대한 trajectory를 로컬에서 처리하는 경우
         if preprocessing_on_local:
-            input_date_str = self.ps_data_path.split('/')[1].split('_')[1][:-4]
-            daystr_ofweeks = get_weekdays_in_same_week(input_date_str) # datetime 반환
-
-            for date in daystr_ofweeks:
-                new_date_str = date.strftime("%Y%m%d")
-                self.ps_data_path = rf'D:\traj_samples\alltraj_{new_date_str}.txt'
-                new_unixtime = corresponding_sample_timecode_unixtime(new_date_str, self.timecode)
-                print(new_unixtime)
-                self.redefine_timerange(new_unixtime)
-                print(self.downtime, self.uptime, self.timecode)
-
-                for link_ps_merge_near_acctime_gdf_chunk in self.link_ps_merge_sampling():
-                    print(link_ps_merge_near_acctime_gdf_chunk.head())
-                    yield link_ps_merge_near_acctime_gdf_chunk
-        
-        else:
-            print('add code')
-            # remain_ps_data= pd.read_csv(remain_ps_data_path, 
-            #                       names = ['trip_id', 'reliability2', 'mathcingRate', 'pointTime', 
-            #                                'pointX', 'pointY', 'link_id', 'speed'])
-            # remain_ps_df = gpd.GeoDataFrame(remain_ps_data, geometry=gpd.points_from_xy(remain_ps_data['pointX'],
-            #                                                                     remain_ps_data['pointY']), 
-            #                                                                     crs="EPSG:5179")
-            # remain_ps_df = remain_ps_df[remain_ps_df['link_id'] != -1]
-            # remain_ps_df['link_id'] = remain_ps_df['link_id'].astype(str)
-
-            # daystr_ofweeks = get_weekdays_in_same_week(input_date_str)
+            # input_date_str = self.ps_data_path.split('/')[1].split('_')[1][:-4]
+            # daystr_ofweeks = get_weekdays_in_same_week(input_date_str) # datetime 반환
             # for date in daystr_ofweeks:
             #     new_date_str = date.strftime("%Y%m%d")
-            #     self.ps_data_path = f'traj_sample/alltraj_{new_date_str}.txt'
-            #     new_ps_gdf = self.ps_data2gdf()
-            #     self.merge_remain_days_df = pd.concat([self.merge_remain_days_df, new_ps_gdf], ignore_index=True)
-            
-            # return self.merge_remain_days_df
+            #     self.ps_data_path = rf'D:\traj_samples\alltraj_{new_date_str}.txt'
+            #     new_unixtime = corresponding_sample_timecode_unixtime(new_date_str, self.timecode)
+            #     self.redefine_timerange(new_unixtime)
+            #     for link_ps_merge_near_acctime_gdf_chunk in self.link_ps_merge_sampling():
+            #         yield link_ps_merge_near_acctime_gdf_chunk
+            new_unixtime = corresponding_sample_timecode_unixtime(new_date_str, self.timecode)
+            self.redefine_timerange(new_unixtime)
+            print(self.timecode, self.downtime, self.uptime)
+            for link_ps_merge_near_acctime_gdf_chunk in self.link_ps_merge_sampling():
+                yield link_ps_merge_near_acctime_gdf_chunk
+        else:
+            print('add code')
 
 class AccidentMatching():
 
@@ -231,21 +207,23 @@ class AccidentMatching():
             lambda point: final_candidate_links.update(find_link_candidate(point, moct_link_gdf)))       
 
         return final_candidate_links
-
-    def candidate_links_with_timebin(self, tass_sample_gdf, moct_link_gdf, link_ps_merge_near_acctime_gdf):
+    
+    def get_candidate_links(self, tass_sample_gdf, moct_link_gdf):
         final_candidate_links = self.extract_link_candidate(tass_sample_gdf, moct_link_gdf)
+        self.candidate_links = set(final_candidate_links.keys())
 
-        candidate_links = set(final_candidate_links.keys())
-        self.candidate_links_gdf = moct_link_gdf[moct_link_gdf['link_id'].isin(candidate_links)]
-        self.ps_on_candidate_links_gdf = link_ps_merge_near_acctime_gdf[link_ps_merge_near_acctime_gdf['link_id'].isin(candidate_links)]
-        
+    def candidate_links_with_timebin(self, tass_sample_gdf, link_ps_merge_near_acctime_gdf):
+        self.ps_on_candidate_links_gdf = link_ps_merge_near_acctime_gdf[link_ps_merge_near_acctime_gdf['link_id'].isin(self.candidate_links)]
         sample_time = tass_sample_gdf['unixtime'].values
         ps_on_candidate_links_gdf = self.ps_on_candidate_links_gdf.copy() 
+    
         # 10분 간격으로 몇 번째 구간(인덱스)에 속하는지 계산
         ps_on_candidate_links_gdf['time_bin_index'] = ((ps_on_candidate_links_gdf['pointTime'] - sample_time) // 600).astype(int)  # 10분(600초) 단위
-        self.ps_on_candidate_links_with_timebin_gdf = ps_on_candidate_links_gdf[ps_on_candidate_links_gdf['time_bin_index'].between(-3,9)]
+        ps_on_candidate_links_gdf[ps_on_candidate_links_gdf['time_bin_index'].between(-3,9)]
 
-    def candidate_link_score(self):
+        return ps_on_candidate_links_gdf
+
+    def candidate_link_score(self, ps_on_candidate_links_gdf):
         '''
         후보링크 기준 시간 단위별 소통 score 산출
         '''
@@ -254,7 +232,7 @@ class AccidentMatching():
             index = int(len(sorted_values) * 0.95)  # 95% 위치 찾기
             return sorted_values[min(index, len(sorted_values) - 1)]  # 가장 가까운 인덱스 값 반환
         
-        unique_ps_on_candidate_links_with_timebin_gdf = self.ps_on_candidate_links_with_timebin_gdf\
+        unique_ps_on_candidate_links_with_timebin_gdf = ps_on_candidate_links_gdf\
                                                         .sort_values(by=['link_id', 'trip_id', 'speed'])\
                                                         .groupby(['link_id', 'trip_id', 'time_bin_index']).first().reset_index()
         
@@ -268,6 +246,8 @@ class AccidentMatching():
         
         self.link_score_df = link_median_df.merge(link_percentile95_df, on='link_id', how='left')
         self.link_score_df['score'] = self.link_score_df['median'] / self.link_score_df['percentile95']
+
+        return self.link_score_df
    
 
 if __name__ == '__main__':
