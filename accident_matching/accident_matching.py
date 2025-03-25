@@ -64,16 +64,16 @@ class AccidentDataPreprocessing:
 
     def init_tass_data2gdf(self):
         logging.info("사고 데이터(taas) 로드 중..")
-        tass_dataset = pd.read_csv(self.tass_data_path)
+        tass_dataset = pd.read_csv(self.tass_data_path, encoding='cp949')
         tass_df = tass_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
                                         'y_crdnt_crdnt', 'acdnt_gae_dc', 'wrngdo_vhcle_asort_dc', 
                                         'dmge_vhcle_asort_dc', 'road_div']]
         # 원본 수정을 위한 copy 
         tass_df = tass_df.copy()
-        tass_df.loc[:, 'occrrnc_time_dc'] = tass_df['occrrnc_time_dc'].str.replace('시', '', regex=True)
-        tass_df.loc[:, 'legaldong_name'] = tass_df['legaldong_name'].apply(
-            lambda x: next((district for district in x.split() if '시' in district), '')
-            )
+        tass_df.loc[:, 'occrrnc_time_dc'] = tass_df['occrrnc_time_dc'].str.replace('시', '', regex=True) # timecode
+        # tass_df.loc[:, 'legaldong_name'] = tass_df['legaldong_name'].apply(
+        #     lambda x: next((district for district in x.split() if '시' in district), '')
+        #     )
         
         # 날짜와 시간을 결합하여 datetime 형식 변환
         tass_df.loc[:, 'datetime'] = pd.to_datetime(tass_df['acdnt_dd_dc'] + ' ' + 
@@ -81,15 +81,16 @@ class AccidentDataPreprocessing:
         tass_df.loc[:, 'unixtime']  = tass_df['datetime'].astype('int64') // 10**9 - (9 * 3600) # KST 기준 맞추기
 
         # 조건 필터링 - 서울 / 중상,사망 사고 / 승용, 승합, 화물
-        tass_df = tass_df[tass_df['legaldong_name'] == '서울특별시']
-        tass_df = tass_df[(tass_df['acdnt_gae_dc'].isin(['중상사고', '사망사고']))]
-        self.tass_df = tass_df[(tass_df['wrngdo_vhcle_asort_dc'].isin(['승용', '승합', '화물'])) | 
-                                          (tass_df['dmge_vhcle_asort_dc'].isin(['승용', '승합', '화물']))]
-        
+        # tass_df = tass_df[tass_df['legaldong_name'] == '서울특별시']
+        # tass_df = tass_df[(tass_df['acdnt_gae_dc'].isin(['중상사고', '사망사고']))]
+        # tass_df = tass_df[(tass_df['wrngdo_vhcle_asort_dc'].isin(['승용', '승합', '화물'])) | 
+        #                                   (tass_df['dmge_vhcle_asort_dc'].isin(['승용', '승합', '화물']))]
+
+        self.tass_df = tass_df
         logging.info("사고 데이터(taas) 로드 완료")
 
         self.tass_sampling()
-        logging.info(f"사고 데이터(taas) 샘플 추출 완료\n<====================사고 샘플 데이터 info====================>{self.tass_sample_gdf}")
+        logging.info(f"사고 데이터(taas) 샘플 추출 완료\n<====================사고 샘플 데이터 info====================>\n{self.tass_sample_gdf.head()}")
 
     def tass_sampling(self):
         ymd = self.ps_data_path.split('/')[1].split('.')[0][-8:]
@@ -105,15 +106,13 @@ class AccidentDataPreprocessing:
                                                                       tass_sample_df['y_crdnt_crdnt']), 
                                                                       crs="EPSG:5179")
         
-        tass_sample_timestamp = self.tass_sample_gdf['unixtime']
-        tass_sample_timecode = self.tass_sample_gdf['occrrnc_time_dc'].astype(int)
+        self.tass_sample_gdf.to_csv('result/taas_sample.csv', index=False)
+        tass_sample_timestamp = self.tass_sample_gdf['unixtime'].iloc[0]
+        tass_sample_timecode = self.tass_sample_gdf['occrrnc_time_dc'].astype(int).iloc[0]
 
-        uptime = tass_sample_timestamp + 5400
-        downtime = tass_sample_timestamp - 1800
-
-        self.uptime = uptime.iloc[0]  
-        self.downtime = downtime.iloc[0]
-        self.timecode = tass_sample_timecode.iloc[0]
+        self.uptime = tass_sample_timestamp + 5400
+        self.downtime = tass_sample_timestamp - 1800
+        self.timecode = tass_sample_timecode
     
     def redefine_timerange(self, unixtime):
         self.uptime = unixtime + 5400
@@ -201,6 +200,10 @@ class AccidentMatching():
     def get_candidate_links(self, tass_sample_gdf, moct_link_gdf):
         final_candidate_links = self.extract_link_candidate(tass_sample_gdf, moct_link_gdf)
         self.candidate_links = set(final_candidate_links.keys())
+        with open("score/candidate_links.txt", "w", encoding="utf-8") as f:
+            for link in self.candidate_links:
+                f.write(link + "\n")
+
 
     def candidate_links_with_timebin(self, new_timestamp, link_ps_merge_near_acctime_gdf):
         self.ps_on_candidate_links_gdf = link_ps_merge_near_acctime_gdf[link_ps_merge_near_acctime_gdf['link_id'].isin(self.candidate_links)]
