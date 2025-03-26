@@ -177,8 +177,7 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
     ax.text(1.02, 0.95, label_text, transform=ax.transAxes, fontsize=12,
             verticalalignment='top', bbox=props)
 
-
-
+    ax.set_aspect('auto')  # 1:1 비율 유지
     # 제목 & 범례
     ax.set_title("Top 10 Candidate Links", fontsize=12)
     ax.legend(loc='lower left')
@@ -272,10 +271,11 @@ if __name__ == '__main__':
     gt_data_path = 'ground_truths/gt_20231211.csv'
     timebin_score_path = 'result/delta_score.csv'
     result_link_path = 'result/result_link_score.csv'
-    answer_link_id = '1120061600'
-    
+    answer_link_id = '1950442300' # 마무리한 것: 신촌, 능동, 안암, 송파 농서로
+
     check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
-    visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
-    visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id)
+    #visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
+    #visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id)
 
     sys.exit(0)
+
