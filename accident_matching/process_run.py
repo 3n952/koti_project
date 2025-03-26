@@ -71,7 +71,7 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
             self.other_day_df = gpd.GeoDataFrame(columns=['link_id', 'trip_id', 'pointTime', 'speed', 'geometry', 'time_bin_index'], 
                              geometry='geometry', crs="EPSG:5179")
             new_date_str = date.strftime("%Y%m%d")
-            self.ps_data_path = rf'D:\traj_samples\alltraj_{new_date_str}.txt'
+            self.ps_data_path = f'traj_sample/alltraj_{new_date_str}.txt'
             total_chunk_size = self.get_data_size()
             for other_ps_chunk in tqdm(self.remain_days_traj(new_date_str, preprocessing_on_local=True),
                                    total=total_chunk_size, 
@@ -153,7 +153,7 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
             o_cols = [col for col in filtered_diff.columns if col.endswith('_o')]
             common_cols = [col.replace('_a', '') for col in a_cols if col.replace('_a', '_o') in o_cols]
 
-            # 다른날과 비교하여 변화량이 얼마나 되는 지 점수화
+            # 다른날과 비교하여 변화량이 얼마나 되는 지 점수화 (추후에 z-score로 바꿔야 하는 부분 -> 이걸 또 어떻게 활용해서 최종 link에 붙힐지 고민)
             diff_result = pd.DataFrame(index=filtered_diff.index)
             for col in common_cols:
                 col_a = f"{col}_a"
@@ -229,13 +229,15 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
         result = result.sort_values(by="result_score", ascending=False)
 
         print('<매칭 결과>')
-        for i in range(10):
+        for i in range(len(result)):
+            if i > 9:
+                break
             result_link = result.iloc[i]
             print(f'{i+1}순위 후보 링크 id: {result_link.name}')
-
+            
         
 def main():
-    tass_data_path = 'tass_dataset/taas_2019_to_2023_241212.csv'
+    tass_data_path = 'tass_dataset/taas_new.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
 

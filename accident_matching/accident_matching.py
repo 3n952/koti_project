@@ -7,6 +7,7 @@ from collections import defaultdict
 import logging
 import math 
 from typing import Generator
+import chardet
 
 from utils import dt2unix, ymd_spliter, corresponding_sample_timecode_unixtime
 
@@ -27,7 +28,7 @@ class AccidentDataPreprocessing:
         self.ps_data_path = ps_data_path
         self.moct_network_path = moct_network_path
         self.init_moct_network2gdf()
-        self.init_tass_data2gdf()
+        self.init_tass_data2gdf(taas_row_gdf=None, load_from_path=False)
 
     def init_moct_network2gdf(self):
         logging.info("MOCT 네트워크 데이터 로드 중..")
@@ -62,12 +63,24 @@ class AccidentDataPreprocessing:
 
             yield ps_gdf  # 제네레이터로 반환
 
-    def init_tass_data2gdf(self):
+    def init_tass_data2gdf(self, taas_row_gdf, load_from_path=False):
+        
         logging.info("사고 데이터(taas) 로드 중..")
-        tass_dataset = pd.read_csv(self.tass_data_path, encoding='cp949')
-        tass_df = tass_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
-                                        'y_crdnt_crdnt', 'acdnt_gae_dc', 'wrngdo_vhcle_asort_dc', 
-                                        'dmge_vhcle_asort_dc', 'road_div']]
+
+        if load_from_path:
+            try:
+                tass_dataset = pd.read_csv(self.tass_data_path, encoding='cp949')
+            except:
+                tass_dataset = pd.read_csv(self.tass_data_path, encoding='UTF-8')
+            
+            # tass_df = tass_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
+            #                                 'y_crdnt_crdnt', 'acdnt_gae_dc', 'wrngdo_vhcle_asort_dc', 
+            #                                 'dmge_vhcle_asort_dc', 'road_div']]
+        else:
+            tass_dataset = taas_row_gdf
+
+        tass_df = tass_dataset[['acdnt_dd_dc', 'occrrnc_time_dc', 'x_crdnt_crdnt',
+                                        'y_crdnt_crdnt']]
         # 원본 수정을 위한 copy 
         tass_df = tass_df.copy()
         tass_df.loc[:, 'occrrnc_time_dc'] = tass_df['occrrnc_time_dc'].str.replace('시', '', regex=True) # timecode
@@ -88,7 +101,6 @@ class AccidentDataPreprocessing:
 
         self.tass_df = tass_df
         logging.info("사고 데이터(taas) 로드 완료")
-
         self.tass_sampling()
         logging.info(f"사고 데이터(taas) 샘플 추출 완료\n<====================사고 샘플 데이터 info====================>\n{self.tass_sample_gdf.head()}")
 
@@ -105,8 +117,8 @@ class AccidentDataPreprocessing:
                                           geometry=gpd.points_from_xy(tass_sample_df['x_crdnt_crdnt'], 
                                                                       tass_sample_df['y_crdnt_crdnt']), 
                                                                       crs="EPSG:5179")
-        
-        self.tass_sample_gdf.to_csv('result/taas_sample.csv', index=False)
+        logging.info(f"사고 데이터(taas) 샘플 추출 완료\n<====================사고 샘플 데이터 info====================>\n{self.tass_sample_gdf.head()}")
+        #self.tass_sample_gdf.to_csv('result/taas_sample.csv', index=False)
         tass_sample_timestamp = self.tass_sample_gdf['unixtime'].iloc[0]
         tass_sample_timecode = self.tass_sample_gdf['occrrnc_time_dc'].astype(int).iloc[0]
 
@@ -200,9 +212,6 @@ class AccidentMatching():
     def get_candidate_links(self, tass_sample_gdf, moct_link_gdf):
         final_candidate_links = self.extract_link_candidate(tass_sample_gdf, moct_link_gdf)
         self.candidate_links = set(final_candidate_links.keys())
-        with open("score/candidate_links.txt", "w", encoding="utf-8") as f:
-            for link in self.candidate_links:
-                f.write(link + "\n")
 
 
     def candidate_links_with_timebin(self, new_timestamp, link_ps_merge_near_acctime_gdf):
