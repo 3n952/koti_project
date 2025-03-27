@@ -2,7 +2,7 @@ import pandas as pd
 from process_run import AccidentMapMatchingProcessor
 from tqdm import tqdm
 import logging
-
+import geopandas as gpd
 
 def recall_top5(ground_truth: str, prediction_df: pd.DataFrame) -> float:
     """
@@ -16,7 +16,7 @@ def recall_top5(ground_truth: str, prediction_df: pd.DataFrame) -> float:
     Returns:
     - Recall@5 값 (0.0 또는 1.0)
     """
-    top5 = prediction_df.sort_values(by='score', ascending=False).head(5)
+    top5 = prediction_df.sort_values(by='result_score', ascending=False).head(5)
     top5_ids = top5['link_id'].tolist()
     return 1.0 if ground_truth in top5_ids else 0.0
 
@@ -32,7 +32,7 @@ def recall_top10(ground_truth: str, prediction_df: pd.DataFrame) -> float:
     Returns:
     - Recall@5 값 (0.0 또는 1.0)
     """
-    top10 = prediction_df.sort_values(by='score', ascending=False).head(10)
+    top10 = prediction_df.sort_values(by='result_score', ascending=False).head(10)
     top10_ids = top10['link_id'].tolist()
     return 1.0 if ground_truth in top10_ids else 0.0
 
@@ -48,7 +48,7 @@ def mrr_top10(ground_truth: str, prediction_df: pd.DataFrame) -> float:
     Returns:
     - MRR@10 값 (0.0 ~ 1.0)
     """
-    top10 = prediction_df.sort_values(by='score', ascending=False).head(10)
+    top10 = prediction_df.sort_values(by='result_score', ascending=False).head(10)
     top10_ids = top10['link_id'].tolist()
     
     if ground_truth in top10_ids:
@@ -63,19 +63,28 @@ if __name__ == '__main__':
     tass_data_path = 'tass_dataset/taas_new.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
-
     taas_sample = pd.read_csv(tass_data_path, encoding='cp949')
     final_result = []
     total_volume = float(len(taas_sample))
-
     answer_count = 0.0
-    for idx, row in tqdm(taas_sample.iterrows(), total= total_volume, desc='recall@10 산출중..'):
+
+    accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
+
+    logging.info(f'총 {total_volume}개 테스트 샘플에 대한 평가지표 산출중')
+    for idx, row in taas_sample.iterrows():
         answer_link_id = str(row['link_id'])
-        accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
+        row_df = pd.DataFrame([row])
+        accidentlinkmatching.tass_sample_gdf = gpd.GeoDataFrame(
+            row_df,
+            geometry=gpd.points_from_xy(row_df['x_crdnt_crdnt'], row_df['y_crdnt_crdnt']),
+            crs="EPSG:5179"
+        )
         result = accidentlinkmatching.mapmatching_result(from_saved=False)
         answer_count += recall_top5(answer_link_id, result) # float
-    
+        metric_ = answer_count / idx+1
+        print(f'{idx+1} 샘플까지의 recall@5: {metric_}')
+        
     metric = answer_count / total_volume
-    logging.info(f"총 {total_volume}개의 테스트 샘플에 대한 평가지표 산출 완료.\nrecall@10: {metric}")
+    logging.info(f"총 {total_volume}개의 테스트 샘플에 대한 평가지표 산출 완료.\nrecall@5: {metric}")
 
     
