@@ -28,7 +28,7 @@ class AccidentDataPreprocessing:
         self.ps_data_path = ps_data_path
         self.moct_network_path = moct_network_path
         self.init_moct_network2gdf()
-        self.init_tass_data2gdf(taas_row_gdf=None, load_from_path=False)
+        self.init_tass_data2gdf()
 
     def init_moct_network2gdf(self):
         logging.info("MOCT 네트워크 데이터 로드 중..")
@@ -36,8 +36,9 @@ class AccidentDataPreprocessing:
         moct_network_link_gdf = moct_network_link_gdf[['link_id', 'road_rank', 'sido_id', 'sgg_id','geometry']]
         moct_network_link_gdf.set_crs(epsg=5179, inplace=True)
 
+        self.moct_link_gdf = moct_network_link_gdf
         # 지역 필터링 (서울시)
-        self.moct_link_gdf = moct_network_link_gdf[moct_network_link_gdf['sido_id'] == 11000]
+        # self.moct_link_gdf = moct_network_link_gdf[moct_network_link_gdf['sido_id'] == 11000]
 
         logging.info("MOCT 네트워크 데이터 로드 완료")
     
@@ -63,26 +64,22 @@ class AccidentDataPreprocessing:
 
             yield ps_gdf  # 제네레이터로 반환
 
-    def init_tass_data2gdf(self, taas_row_gdf, load_from_path=False):
+    def init_tass_data2gdf(self):
         
         logging.info("사고 데이터(taas) 로드 중..")
+       
+        try:
+            tass_dataset = pd.read_csv(self.tass_data_path, encoding='cp949')
+        except:
+            tass_dataset = pd.read_csv(self.tass_data_path, encoding='UTF-8')
+       
+        # tass_df = tass_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
+        #                                     'y_crdnt_crdnt', 'acdnt_gae_dc', 'wrngdo_vhcle_asort_dc', 
+        #                                     'dmge_vhcle_asort_dc', 'road_div']]
 
-        if load_from_path:
-            try:
-                tass_dataset = pd.read_csv(self.tass_data_path, encoding='cp949')
-            except:
-                tass_dataset = pd.read_csv(self.tass_data_path, encoding='UTF-8')
-            
-            # tass_df = tass_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
-            #                                 'y_crdnt_crdnt', 'acdnt_gae_dc', 'wrngdo_vhcle_asort_dc', 
-            #                                 'dmge_vhcle_asort_dc', 'road_div']]
-        else:
-            tass_dataset = taas_row_gdf
-
-        tass_df = tass_dataset[['acdnt_dd_dc', 'occrrnc_time_dc', 'x_crdnt_crdnt',
-                                        'y_crdnt_crdnt']]
-        # 원본 수정을 위한 copy 
-        tass_df = tass_df.copy()
+        tass_df = tass_dataset[['acdnt_dd_dc', 'occrrnc_time_dc', 'x_crdnt_crdnt', 'y_crdnt_crdnt']]
+         
+        # tass_df = tass_df.copy()
         tass_df.loc[:, 'occrrnc_time_dc'] = tass_df['occrrnc_time_dc'].str.replace('시', '', regex=True) # timecode
         # tass_df.loc[:, 'legaldong_name'] = tass_df['legaldong_name'].apply(
         #     lambda x: next((district for district in x.split() if '시' in district), '')
@@ -117,8 +114,7 @@ class AccidentDataPreprocessing:
                                           geometry=gpd.points_from_xy(tass_sample_df['x_crdnt_crdnt'], 
                                                                       tass_sample_df['y_crdnt_crdnt']), 
                                                                       crs="EPSG:5179")
-        logging.info(f"사고 데이터(taas) 샘플 추출 완료\n<====================사고 샘플 데이터 info====================>\n{self.tass_sample_gdf.head()}")
-        #self.tass_sample_gdf.to_csv('result/taas_sample.csv', index=False)
+        self.tass_sample_gdf.to_csv('result/taas_sample.csv', index=False)
         tass_sample_timestamp = self.tass_sample_gdf['unixtime'].iloc[0]
         tass_sample_timecode = self.tass_sample_gdf['occrrnc_time_dc'].astype(int).iloc[0]
 
@@ -188,11 +184,9 @@ class AccidentMatching():
                 {link_id: LineString} 구조의 딕셔너리 반환
             """
             candidate_links = {}
-
             for _, row in road_gdf.iterrows():
                 segment = row['geometry']
                 link_id = row['link_id']  # link_id 추출
-
                 if segment.is_empty:
                     continue
 
@@ -200,19 +194,18 @@ class AccidentMatching():
                 # accident point는 하나의 사고 포인트
                 if segment.distance(accident_point) <= self.radius:  
                     candidate_links[link_id] = segment  # {link_id: LineString} 형태로 저장
-
+                
             return candidate_links
 
         # apply() 결과를 defaultdict로 병합
         tass_sample_gdf['geometry'].apply(
             lambda point: final_candidate_links.update(find_link_candidate(point, moct_link_gdf)))       
-
+       
         return final_candidate_links
     
     def get_candidate_links(self, tass_sample_gdf, moct_link_gdf):
         final_candidate_links = self.extract_link_candidate(tass_sample_gdf, moct_link_gdf)
         self.candidate_links = set(final_candidate_links.keys())
-
 
     def candidate_links_with_timebin(self, new_timestamp, link_ps_merge_near_acctime_gdf):
         self.ps_on_candidate_links_gdf = link_ps_merge_near_acctime_gdf[link_ps_merge_near_acctime_gdf['link_id'].isin(self.candidate_links)]
@@ -252,7 +245,7 @@ class AccidentMatching():
    
 
 if __name__ == '__main__':
-    tass_data_path = 'tass_dataset/tass_2019_to_2023_241212.csv'
+    tass_data_path = 'tass_dataset/taas_new.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
     test = AccidentDataPreprocessing(tass_data_path, ps_data_path, moct_network_path)

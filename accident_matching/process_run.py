@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
     def __init__(self, tass_data_path: str, ps_data_path: str, moct_network_path: str):
         AccidentDataPreprocessing.__init__(self, tass_data_path, ps_data_path, moct_network_path)
-        AccidentMatching.__init__(self, radius=300)
+        AccidentMatching.__init__(self, radius=300.0)
 
     def get_data_size(self, chunk=10000000):
         def count_lines(filename):
@@ -84,8 +84,8 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
                 self.other_day_df = pd.concat([self.other_day_df, ps_on_candidate_links_with_timebin_gdf], ignore_index=True)
 
             other_day_score = self.candidate_link_score(ps_on_candidate_links_gdf=self.other_day_df)
-            # if save_score:
-            #     other_day_score.to_csv(f'scores/other_day_score{idx_day+1}.csv', index=False)
+            if save_score:
+                other_day_score.to_csv(f'score/other_day_score{idx_day+1}.csv', index=False)
 
             logging.info(f"사고 이외 날짜 기반 {idx_day+1}번째 날 소통 점수 산출 완료")
             yield other_day_score
@@ -97,7 +97,7 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
         accident_day_score = self.candidate_link_score(ps_on_candidate_links_gdf=self.accident_day_df)
         
         if save_score: #점수차이 계산 전 점수까지의 내용 저장
-            accident_day_score.to_csv(f'scores/accident_day_score.csv', encoding='cp949', index=False)
+            accident_day_score.to_csv(f'score/accident_day_score.csv', encoding='cp949', index=False)
 
         accident_day_score = accident_day_score[['link_id', 'time_bin_index', 'score']]
         accident_day_score_pivot = accident_day_score.pivot(index='link_id', columns='time_bin_index', values='score')
@@ -160,7 +160,7 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
                 col_o = f"{col}_o"
                 diff_result[col] = (filtered_diff[col_a] - filtered_diff[col_o]) / filtered_diff[col_a]
             diff_result.replace([np.inf, -np.inf], np.nan, inplace=True)
-            diff_result.to_csv('result/delta_score.csv', encoding='cp949')
+            diff_result.to_csv('result/delta_score.csv', encoding='cp949', index=False)
     
             # 사고 예상 시점 (diff_0to1 ~ diff_8to9)
             positive_cols = [col for col in diff_result.columns if 'diff_' in col and 'to' in col and int(col.split('_')[1].split('to')[0]) >= 0]
@@ -168,6 +168,7 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
             negative_cols = [col for col in diff_result.columns if 'diff_' in col and 'to' in col and int(col.split('_')[1].split('to')[0]) < 0]
             max_pos = diff_result[positive_cols].max(axis=1, skipna=True)
             min_neg = diff_result[negative_cols].min(axis=1, skipna=True)
+
             diff_between_max_and_min = max_pos - min_neg
             result = pd.DataFrame({
                 "result_score": diff_between_max_and_min
@@ -217,8 +218,8 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
 
         else:
             # 둘 다 pivot 테이블
-            accident_day_score_diff = self.get_accident_day_score_diff(save_score=False) 
-            other_day_score_mean = self.get_other_day_score_diff_mean(save_score=False)
+            accident_day_score_diff = self.get_accident_day_score_diff(save_score=True) 
+            other_day_score_mean = self.get_other_day_score_diff_mean(save_score=True)
             result = get_results_score(accident_day_score_diff, other_day_score_mean)
 
         return result
@@ -230,7 +231,7 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
 
         print('<매칭 결과>')
         for i in range(len(result)):
-            if i > 9:
+            if i > 4:
                 break
             result_link = result.iloc[i]
             print(f'{i+1}순위 후보 링크 id: {result_link.name}')
