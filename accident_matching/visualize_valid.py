@@ -122,9 +122,11 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
     result['link_id'] = result['link_id'].astype(int).astype(str)
     
     result_links = list()
-    for i in range(10):
-            result_link = result.iloc[i]
-            result_links.append(result_link['link_id']) # link_id: str
+    for i in range(len(result)):
+        if i > 4:
+            break
+        result_link = result.iloc[i]
+        result_links.append(result_link['link_id']) # link_id: str
 
     if answer_link_id in result_links:
         print('사고링크맵매칭 top 10 중 정답이 있습니다.')
@@ -150,10 +152,13 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
 
     # 시각화
     fig, ax = plt.subplots(figsize=(15, 10))
+    ax.set_xticks([]); ax.set_yticks([])
+    ax.set_xticklabels([]); ax.set_yticklabels([])
+
     # Taas 포인트 
     tass_sample_gdf.plot(ax=ax, color='red', markersize=20, label="Taas Point")
     # 정답 링크 그리기
-    moct_link_gdf_answered.plot(ax=ax, color='red', linewidth=3, label="Answer Links")
+    moct_link_gdf_answered.plot(ax=ax, color='red', linewidth=3, label="Answer Link")
 
     # 기존 moctlink in buffer 그리기 
     moct_network_link_gdf.plot(ax=ax, color='black', linewidth=2, alpha=0.3, label="MOCT Links")
@@ -169,16 +174,17 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
                 ha='center', va='center')
 
     # Top 10 link_id 목록 (범례 느낌으로 텍스트 상자에 표시)
-    top10_labels = [f"Top {idx+1}: {row['link_id']}" for idx, row in moct_link_gdf_filtered.iterrows()]
+    top10_labels = [
+    f"Top {idx+1}: {row['link_id']}" + (" (answer)" if row['link_id'] == answer_link_id else "")
+    for idx, row in moct_link_gdf_filtered.iterrows()]
     label_text = "\n".join(top10_labels)
-
-    # 텍스트 박스 추가 (우측 상단)
     props = dict(boxstyle='round', facecolor='white', alpha=0.8)
     ax.text(1.02, 0.95, label_text, transform=ax.transAxes, fontsize=12,
             verticalalignment='top', bbox=props)
 
-    ax.set_aspect('auto')  # 1:1 비율 유지
+
     # 제목 & 범례
+    ax.set_aspect('auto', adjustable='box')
     ax.set_title("Top 10 Candidate Links", fontsize=12)
     ax.legend(loc='lower left')
     plt.tight_layout()
@@ -264,18 +270,21 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
 
 if __name__ == '__main__':
 
-    tass_data_path = 'tass_dataset/tass_2019_to_2023_241212.csv'
+    tass_data_path = 'tass_dataset/taas_new.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
     taas_sample_path = 'result/taas_sample.csv'
     gt_data_path = 'ground_truths/gt_20231211.csv'
     timebin_score_path = 'result/delta_score.csv'
     result_link_path = 'result/result_link_score.csv'
-    answer_link_id = '1950442300' # 마무리한 것: 신촌, 능동, 안암, 송파 농서로
+    answer_link_id = '3680450000' # 마무리한 것: 신촌, 능동, 안암, 송파 농서로
 
-    check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
+
+    # accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
+    # accidentlinkmatching.run()
+    #check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
     #visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
-    #visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id)
+    visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id)
 
     sys.exit(0)
 
