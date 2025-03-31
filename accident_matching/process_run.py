@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
     def __init__(self, tass_data_path: str, ps_data_path: str, moct_network_path: str):
         AccidentDataPreprocessing.__init__(self, tass_data_path, ps_data_path, moct_network_path)
-        AccidentMatching.__init__(self, radius=300.0)
+        AccidentMatching.__init__(self, radius=400)
 
     def get_data_size(self, chunk=10000000):
         def count_lines(filename):
@@ -160,18 +160,19 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
                 col_o = f"{col}_o"
                 diff_result[col] = (filtered_diff[col_a] - filtered_diff[col_o]) / filtered_diff[col_a]
             diff_result.replace([np.inf, -np.inf], np.nan, inplace=True)
-            diff_result.to_csv('result/delta_score.csv', encoding='cp949', index=False)
-    
+            diff_result.to_csv('result/delta_score.csv', encoding='cp949')
+
             # 사고 예상 시점 (diff_0to1 ~ diff_8to9)
             positive_cols = [col for col in diff_result.columns if 'diff_' in col and 'to' in col and int(col.split('_')[1].split('to')[0]) >= 0]
             # 사고 예상 이전 시점(diff_-3to-2 ~ diff_-1to0)
-            negative_cols = [col for col in diff_result.columns if 'diff_' in col and 'to' in col and int(col.split('_')[1].split('to')[0]) < 0]
+            #negative_cols = [col for col in diff_result.columns if 'diff_' in col and 'to' in col and int(col.split('_')[1].split('to')[0]) < 0]
+            
             max_pos = diff_result[positive_cols].max(axis=1, skipna=True)
-            min_neg = diff_result[negative_cols].min(axis=1, skipna=True)
+            #min_neg = diff_result[negative_cols].min(axis=1, skipna=True)
+            #diff_between_max_and_min = max_pos - min_neg if min_neg is not None else max_pos
 
-            diff_between_max_and_min = max_pos - min_neg
             result = pd.DataFrame({
-                "result_score": diff_between_max_and_min
+                "result_score": max_pos
             })
             return result
         
@@ -238,7 +239,7 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
             
         
 def main():
-    tass_data_path = 'tass_dataset/taas_new.csv'
+    tass_data_path = 'tass_dataset/taas_100_400.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
 

@@ -76,7 +76,6 @@ class AccidentDataPreprocessing:
         # tass_df = tass_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
         #                                     'y_crdnt_crdnt', 'acdnt_gae_dc', 'wrngdo_vhcle_asort_dc', 
         #                                     'dmge_vhcle_asort_dc', 'road_div']]
-
         tass_df = tass_dataset[['acdnt_dd_dc', 'occrrnc_time_dc', 'x_crdnt_crdnt', 'y_crdnt_crdnt']]
          
         # tass_df = tass_df.copy()
@@ -101,6 +100,7 @@ class AccidentDataPreprocessing:
         self.tass_sampling()
         logging.info(f"사고 데이터(taas) 샘플 추출 완료\n<====================사고 샘플 데이터 info====================>\n{self.tass_sample_gdf.head()}")
 
+
     def tass_sampling(self):
         ymd = self.ps_data_path.split('/')[1].split('.')[0][-8:]
         y,m,d = ymd_spliter(ymd)
@@ -108,8 +108,12 @@ class AccidentDataPreprocessing:
         # 하루에 대한 값
         self.tass_df = self.tass_df[self.tass_df['unixtime'].between(dt2unix(f'{y}-{m}-{d} 00:00:00'), 
                                                                               dt2unix(f'{y}-{m}-{d} 23:59:59'))]
-        # 특정 사고 랜덤 추출
+        # 특정 사고 랜덤 샘플링
         tass_sample_df = self.tass_df.sample(n=1)
+
+        # 특정 사고 인덱스 기반 샘플링
+        # tass_sample_df = self.tass_df.iloc[[77]]
+
         self.tass_sample_gdf = gpd.GeoDataFrame(tass_sample_df, 
                                           geometry=gpd.points_from_xy(tass_sample_df['x_crdnt_crdnt'], 
                                                                       tass_sample_df['y_crdnt_crdnt']), 

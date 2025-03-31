@@ -10,9 +10,6 @@ import matplotlib.colors as mcolors
 from shapely import wkt
 from shapely.geometry import LineString, Point
 
-
-from process_run import AccidentMapMatchingProcessor
-
 def visualize_candidate_links(final_candidate_links, moct_link_gdf, 
                               link_ps_merge_near_acctime_gdf, tass_sample_gdf):
 
@@ -114,7 +111,7 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
 
     tass_sample_gdf['geometry'] = tass_sample_gdf['geometry'].apply(wkt.loads)
     tass_sample_gdf = gpd.GeoDataFrame(tass_sample_gdf, geometry='geometry', crs='EPSG:5179')  # 좌표계 확인 필요
-    tass_sample_gdf['buffer'] = tass_sample_gdf.geometry.buffer(300)
+    tass_sample_gdf['buffer'] = tass_sample_gdf.geometry.buffer(400)
     buffer_union = tass_sample_gdf['buffer'].union_all()
 
     result = pd.read_csv('result/result_link_score.csv')
@@ -129,9 +126,9 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
         result_links.append(result_link['link_id']) # link_id: str
 
     if answer_link_id in result_links:
-        print('사고링크맵매칭 top 10 중 정답이 있습니다.')
+        print('사고링크맵매칭 top 5 중 정답이 있습니다.')
     else:
-        print('사고링크맵매칭 top 10 중 정답이 없습니다.')
+        print('사고링크맵매칭 top 5 중 정답이 없습니다.')
 
     # moct
     try: 
@@ -156,17 +153,16 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
     ax.set_xticklabels([]); ax.set_yticklabels([])
 
     # Taas 포인트 
-    tass_sample_gdf.plot(ax=ax, color='red', markersize=20, label="Taas Point")
+    tass_sample_gdf.plot(ax=ax, color='red', markersize=35, label="Taas Point")
     # 정답 링크 그리기
     moct_link_gdf_answered.plot(ax=ax, color='red', linewidth=3, label="Answer Link")
 
     # 기존 moctlink in buffer 그리기 
     moct_network_link_gdf.plot(ax=ax, color='black', linewidth=2, alpha=0.3, label="MOCT Links")
-    # Top 10 링크는 파란색으로 그리기
-    moct_link_gdf_filtered.plot(ax=ax, color='blue', linewidth=2, alpha=0.7, label="Top 10 Links")
+    # Top 5 링크는 파란색으로 그리기
+    moct_link_gdf_filtered.plot(ax=ax, color='blue', linewidth=2, alpha=0.7, label="Top 5 Links")
 
-
-    # 지도에 숫자 1~10만 표시
+    # 지도에 숫자 top 5만 표시
     for idx, row in moct_link_gdf_filtered.iterrows():
         center = row['geometry'].interpolate(0.5, normalized=True)
         ax.text(center.x, center.y, str(idx + 1),
@@ -185,7 +181,7 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
 
     # 제목 & 범례
     ax.set_aspect('auto', adjustable='box')
-    ax.set_title("Top 10 Candidate Links", fontsize=12)
+    ax.set_title("Top 5 Candidate Links", fontsize=12)
     ax.legend(loc='lower left')
     plt.tight_layout()
     plt.show(block=True)
@@ -201,7 +197,7 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
     #tass_sample_gdf = tass_sample_gdf[['geometry']]
     taas_sample_gdf['geometry'] = taas_sample_gdf['geometry'].apply(wkt.loads)
     taas_sample_gdf = gpd.GeoDataFrame(taas_sample_gdf, geometry='geometry', crs='EPSG:5179')  # 좌표계 확인 필요
-    taas_sample_gdf['buffer'] = taas_sample_gdf.geometry.buffer(300)
+    taas_sample_gdf['buffer'] = taas_sample_gdf.geometry.buffer(400)
     buffer_union = taas_sample_gdf['buffer'].union_all()
 
     timebin_score_df = pd.read_csv(timebin_score_path)
@@ -222,7 +218,6 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
     moct_network_link_gdf = moct_network_link_gdf[moct_network_link_gdf.geometry.intersects(buffer_union)]
 
     merged_gdf = moct_network_link_gdf.merge(timebin_score_df, on="link_id", how="inner")
-
     # 초기 설정
     initial_timebin_idx = 0
     initial_col = timebin_columns[initial_timebin_idx]
@@ -259,7 +254,7 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
         # 지도 다시 그리기
         ax.clear()
         #배경 도로: 전체 MOCT 도로망 (연하게)
-        moct_network_link_gdf.plot(ax=ax, color='black', linewidth=2, alpha=0.3, label="MOCT Links (All)")
+        moct_network_link_gdf.plot(ax=ax, color='black', linewidth=2, alpha=0.3, label="MOCT Links")
         #슬라이더로 선택된 score 기반 도로만 강조
         merged_gdf.plot(ax=ax, color=new_colors, linewidth=2, label="Scored Links")
         ax.set_title(f"Timebin: {col}")
@@ -277,8 +272,7 @@ if __name__ == '__main__':
     gt_data_path = 'ground_truths/gt_20231211.csv'
     timebin_score_path = 'result/delta_score.csv'
     result_link_path = 'result/result_link_score.csv'
-    answer_link_id = '3680450000' # 마무리한 것: 신촌, 능동, 안암, 송파 농서로
-
+    answer_link_id = '2250001300' 
 
     # accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
     # accidentlinkmatching.run()
