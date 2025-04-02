@@ -60,7 +60,7 @@ def mrr_top10(ground_truth: str, prediction_df: pd.DataFrame) -> float:
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    tass_data_path = 'tass_dataset/taas_100_400.csv'
+    tass_data_path = 'tass_dataset/taas_under_100.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
     taas_sample = pd.read_csv(tass_data_path, encoding='cp949')

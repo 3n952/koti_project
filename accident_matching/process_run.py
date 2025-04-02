@@ -10,6 +10,7 @@ from accident_matching import AccidentMatching, AccidentDataPreprocessing
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+
 class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
     def __init__(self, tass_data_path: str, ps_data_path: str, moct_network_path: str):
         AccidentDataPreprocessing.__init__(self, tass_data_path, ps_data_path, moct_network_path)
@@ -107,7 +108,6 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
                 index = accident_day_score_pivot.index,
                 columns = accident_day_score_pivot.columns[:-1]
             )
-            
         accident_day_score_diff.columns = accident_day_score_diff.columns.map(lambda x: f"diff_{x}to{x+1}")
 
         logging.info(f"사고 당일 데이터 기반 소통 점수 산출 완료")
@@ -165,11 +165,11 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
             # 사고 예상 시점 (diff_0to1 ~ diff_8to9)
             positive_cols = [col for col in diff_result.columns if 'diff_' in col and 'to' in col and int(col.split('_')[1].split('to')[0]) >= 0]
             # 사고 예상 이전 시점(diff_-3to-2 ~ diff_-1to0)
-            #negative_cols = [col for col in diff_result.columns if 'diff_' in col and 'to' in col and int(col.split('_')[1].split('to')[0]) < 0]
-            
+            # negative_cols = [col for col in diff_result.columns if 'diff_' in col and 'to' in col and int(col.split('_')[1].split('to')[0]) < 0]
+
             max_pos = diff_result[positive_cols].max(axis=1, skipna=True)
-            #min_neg = diff_result[negative_cols].min(axis=1, skipna=True)
-            #diff_between_max_and_min = max_pos - min_neg if min_neg is not None else max_pos
+            # min_neg = diff_result[negative_cols].min(axis=1, skipna=True)
+            # diff_between_max_and_min = max_pos - min_neg if min_neg is not None else max_pos
 
             result = pd.DataFrame({
                 "result_score": max_pos

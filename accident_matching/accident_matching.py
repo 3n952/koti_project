@@ -1,17 +1,14 @@
 import pandas as pd
-import numpy as np
-from datetime import datetime
 import geopandas as gpd
-from shapely.geometry import Point, LineString
+from shapely.geometry import Point
 from collections import defaultdict
 import logging
-import math 
 from typing import Generator
-import chardet
 
 from utils import dt2unix, ymd_spliter, corresponding_sample_timecode_unixtime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 class AccidentDataPreprocessing:
     '''
@@ -33,7 +30,7 @@ class AccidentDataPreprocessing:
     def init_moct_network2gdf(self):
         logging.info("MOCT 네트워크 데이터 로드 중..")
         moct_network_link_gdf = gpd.read_file(self.moct_network_path, encoding='euc-kr')
-        moct_network_link_gdf = moct_network_link_gdf[['link_id', 'road_rank', 'sido_id', 'sgg_id','geometry']]
+        moct_network_link_gdf = moct_network_link_gdf[['link_id', 'road_rank', 'sido_id', 'sgg_id', 'geometry']]
         moct_network_link_gdf.set_crs(epsg=5179, inplace=True)
 
         self.moct_link_gdf = moct_network_link_gdf
@@ -41,7 +38,7 @@ class AccidentDataPreprocessing:
         # self.moct_link_gdf = moct_network_link_gdf[moct_network_link_gdf['sido_id'] == 11000]
 
         logging.info("MOCT 네트워크 데이터 로드 완료")
-    
+
     def ps_data2gdf(self, chunksize=10000000):
         '''
         ps 데이터를 CSV로 청크단위로 기본 전처리하여 gdf를 제네레이터로 반환
@@ -49,10 +46,11 @@ class AccidentDataPreprocessing:
             :param chunksize: 청크 단위 사이즈
             :yield: 기본 전처리된 ps의 gdf타입의 데이터
         '''
-        for ps_dataset in pd.read_csv(self.ps_data_path, 
-                                  names = ['trip_id', 'reliability2', 'mathcingRate', 'pointTime', 
-                                           'pointX', 'pointY', 'link_id', 'speed'], chunksize=chunksize):
-    
+        for ps_dataset in pd.read_csv(self.ps_data_path,
+                                      names=['trip_id', 'reliability2', 'mathcingRate',
+                                             'pointTime', 'pointX', 'pointY', 'link_id', 'speed'],
+                                      chunksize=chunksize):
+
             # 좌표를 geometry로 변환
             ps_dataset['geometry'] = gpd.points_from_xy(ps_dataset['pointX'], ps_dataset['pointY'])
             # GeoDataFrame 변환
@@ -65,29 +63,25 @@ class AccidentDataPreprocessing:
             yield ps_gdf  # 제네레이터로 반환
 
     def init_tass_data2gdf(self):
-        
         logging.info("사고 데이터(taas) 로드 중..")
-       
         try:
             tass_dataset = pd.read_csv(self.tass_data_path, encoding='cp949')
         except:
             tass_dataset = pd.read_csv(self.tass_data_path, encoding='UTF-8')
-       
         # tass_df = tass_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
         #                                     'y_crdnt_crdnt', 'acdnt_gae_dc', 'wrngdo_vhcle_asort_dc', 
         #                                     'dmge_vhcle_asort_dc', 'road_div']]
         tass_df = tass_dataset[['acdnt_dd_dc', 'occrrnc_time_dc', 'x_crdnt_crdnt', 'y_crdnt_crdnt']]
-         
         # tass_df = tass_df.copy()
         tass_df.loc[:, 'occrrnc_time_dc'] = tass_df['occrrnc_time_dc'].str.replace('시', '', regex=True) # timecode
         # tass_df.loc[:, 'legaldong_name'] = tass_df['legaldong_name'].apply(
         #     lambda x: next((district for district in x.split() if '시' in district), '')
         #     )
-        
         # 날짜와 시간을 결합하여 datetime 형식 변환
-        tass_df.loc[:, 'datetime'] = pd.to_datetime(tass_df['acdnt_dd_dc'] + ' ' + 
-                                                            tass_df['occrrnc_time_dc'] + ':00:00') # unixtime 변환
-        tass_df.loc[:, 'unixtime']  = tass_df['datetime'].astype('int64') // 10**9 - (9 * 3600) # KST 기준 맞추기
+        # unixtime 변환
+        tass_df.loc[:, 'datetime'] = pd.to_datetime(tass_df['acdnt_dd_dc'] + ' ' + tass_df['occrrnc_time_dc'] + ':00:00')
+        # KST 기준 맞추기
+        tass_df.loc[:, 'unixtime']  = tass_df['datetime'].astype('int64') // 10**9 - (9 * 3600)
 
         # 조건 필터링 - 서울 / 중상,사망 사고 / 승용, 승합, 화물
         # tass_df = tass_df[tass_df['legaldong_name'] == '서울특별시']
@@ -115,8 +109,8 @@ class AccidentDataPreprocessing:
         # tass_sample_df = self.tass_df.iloc[[77]]
 
         self.tass_sample_gdf = gpd.GeoDataFrame(tass_sample_df, 
-                                          geometry=gpd.points_from_xy(tass_sample_df['x_crdnt_crdnt'], 
-                                                                      tass_sample_df['y_crdnt_crdnt']), 
+                                          geometry=gpd.points_from_xy(tass_sample_df['x_crdnt_crdnt'],
+                                                                      tass_sample_df['y_crdnt_crdnt']),
                                                                       crs="EPSG:5179")
         self.tass_sample_gdf.to_csv('result/taas_sample.csv', index=False)
         tass_sample_timestamp = self.tass_sample_gdf['unixtime'].iloc[0]
@@ -203,7 +197,7 @@ class AccidentMatching():
 
         # apply() 결과를 defaultdict로 병합
         tass_sample_gdf['geometry'].apply(
-            lambda point: final_candidate_links.update(find_link_candidate(point, moct_link_gdf)))       
+            lambda point: final_candidate_links.update(find_link_candidate(point, moct_link_gdf)))
        
         return final_candidate_links
     

@@ -1,14 +1,12 @@
 import matplotlib.pyplot as plt
 import sys 
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import geopandas as gpd
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from shapely import wkt
-from shapely.geometry import LineString, Point
+
 
 def visualize_candidate_links(final_candidate_links, moct_link_gdf, 
                               link_ps_merge_near_acctime_gdf, tass_sample_gdf):
@@ -32,6 +30,7 @@ def visualize_candidate_links(final_candidate_links, moct_link_gdf,
     plt.ylabel("y")
     plt.show(block=True)
 
+
 def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
     '''
     gt(돌발상황 정보) 데이터에 나타난 사고 지점 위치 주변 링크를 시각화하여 확인하는 함수
@@ -47,7 +46,7 @@ def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
         print(E)
         print('try decode for UTF-8')
         taas_sample_gdf = gpd.read_file(taas_sample_path, encoding='UTF-8')
-    
+
     taas_sample_gdf['geometry'] = taas_sample_gdf['geometry'].apply(wkt.loads)
     taas_sample_gdf = gpd.GeoDataFrame(taas_sample_gdf, geometry='geometry', crs='EPSG:5179')  # 좌표계 확인 필요
     taas_point = taas_sample_gdf['geometry'].iloc[0]
@@ -77,7 +76,7 @@ def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
     except:
         link_gdf = gpd.read_file(moct_link_path, encoding='UTF-8')
 
-    link_gdf = link_gdf[['link_id', 'road_rank', 'sido_id', 'sgg_id','geometry']]
+    link_gdf = link_gdf[['link_id', 'road_rank', 'sido_id', 'sgg_id', 'geometry']]
     link_gdf.set_crs(epsg=5179, inplace=True)
 
     link_gdf_near_taas = link_gdf[link_gdf['geometry'].distance(taas_point) <= 300]
@@ -92,7 +91,6 @@ def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
     gt_near_tass_gdf.plot(ax=ax, color='green', linewidth=1, label=f"GT Link near taas({radius1}m)")
     taas_sample_gdf['buffer1'].plot(ax=ax, facecolor='blue', edgecolor='blue', alpha=0.3, label=f'{radius1}')
     ax.plot(x, y, 'ro', markersize=5, label="taas Point")
-    
 
     plt.legend()
     plt.title("ground_truth vs candidate links")
@@ -100,8 +98,8 @@ def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
     plt.ylabel("y")
     plt.show(block=True)
 
+
 def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id: str):
- 
     try:
         tass_sample_gdf = gpd.read_file(taas_sample_path, encoding='euc-kr')
     except UnicodeDecodeError as E:
@@ -177,8 +175,6 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
     props = dict(boxstyle='round', facecolor='white', alpha=0.8)
     ax.text(1.02, 0.95, label_text, transform=ax.transAxes, fontsize=12,
             verticalalignment='top', bbox=props)
-
-
     # 제목 & 범례
     ax.set_aspect('auto', adjustable='box')
     ax.set_title("Top 5 Candidate Links", fontsize=12)
@@ -186,15 +182,13 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
     plt.tight_layout()
     plt.show(block=True)
 
+
 def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_network_path):
 
     try:
         taas_sample_gdf = gpd.read_file(taas_sample_path, encoding='euc-kr')
     except:
         taas_sample_gdf = gpd.read_file(taas_sample_path, encoding='UTF-8')
-
-    #print(tass_sample_gdf.head())
-    #tass_sample_gdf = tass_sample_gdf[['geometry']]
     taas_sample_gdf['geometry'] = taas_sample_gdf['geometry'].apply(wkt.loads)
     taas_sample_gdf = gpd.GeoDataFrame(taas_sample_gdf, geometry='geometry', crs='EPSG:5179')  # 좌표계 확인 필요
     taas_sample_gdf['buffer'] = taas_sample_gdf.geometry.buffer(400)
@@ -204,7 +198,6 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
     timebin_score_df.set_index('link_id', inplace=True)
     timebin_score_df = timebin_score_df.reset_index()
     timebin_score_df['link_id'] = timebin_score_df['link_id'].astype(str)
-    
     timebin_columns = [col for col in timebin_score_df.columns if col.startswith("diff_")]
 
     try:
@@ -235,7 +228,7 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
     # GeoDataFrame plot 초기화
     moct_network_link_gdf.plot(ax=ax, color='black', linewidth=2, alpha=0.3, label="MOCT Links (All)")
 
-    plot = merged_gdf.plot(ax=ax, color=colors, linewidth=2, label="Scored Links")
+    merged_gdf.plot(ax=ax, color=colors, linewidth=2, label="Scored Links")
     ax.set_title(f"Timebin: {initial_col}")
     ax.axis('off')
 
@@ -253,15 +246,16 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
 
         # 지도 다시 그리기
         ax.clear()
-        #배경 도로: 전체 MOCT 도로망 (연하게)
+        # 배경 도로: 전체 MOCT 도로망 (연하게)
         moct_network_link_gdf.plot(ax=ax, color='black', linewidth=2, alpha=0.3, label="MOCT Links")
-        #슬라이더로 선택된 score 기반 도로만 강조
+        # 슬라이더로 선택된 score 기반 도로만 강조
         merged_gdf.plot(ax=ax, color=new_colors, linewidth=2, label="Scored Links")
         ax.set_title(f"Timebin: {col}")
         ax.axis('off')
         fig.canvas.draw_idle()
     slider.on_changed(update)
     plt.show(block=True)
+
 
 if __name__ == '__main__':
 
@@ -276,8 +270,8 @@ if __name__ == '__main__':
 
     # accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
     # accidentlinkmatching.run()
-    #check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
-    #visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
+    # check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
+    # visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
     visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id)
 
     sys.exit(0)
