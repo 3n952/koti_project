@@ -103,16 +103,16 @@ class AccidentDataPreprocessing:
         self.tass_df = self.tass_df[self.tass_df['unixtime'].between(dt2unix(f'{y}-{m}-{d} 00:00:00'), 
                                                                               dt2unix(f'{y}-{m}-{d} 23:59:59'))]
         # 특정 사고 랜덤 샘플링
-        tass_sample_df = self.tass_df.sample(n=1)
+        # tass_sample_df = self.tass_df.sample(n=1)
 
         # 특정 사고 인덱스 기반 샘플링
-        # tass_sample_df = self.tass_df.iloc[[77]]
+        tass_sample_df = self.tass_df.iloc[[114]]
 
         self.tass_sample_gdf = gpd.GeoDataFrame(tass_sample_df, 
                                           geometry=gpd.points_from_xy(tass_sample_df['x_crdnt_crdnt'],
                                                                       tass_sample_df['y_crdnt_crdnt']),
                                                                       crs="EPSG:5179")
-        self.tass_sample_gdf.to_csv('result/taas_sample.csv', index=False)
+        self.tass_sample_gdf.to_csv('result/taas_sample.csv')
         tass_sample_timestamp = self.tass_sample_gdf['unixtime'].iloc[0]
         tass_sample_timecode = self.tass_sample_gdf['occrrnc_time_dc'].astype(int).iloc[0]
 
@@ -234,8 +234,7 @@ class AccidentMatching():
                                                                     ).reset_index()
 
         # 10분 단위 기준 속도 중위값 계산
-        link_median_df = unique_ps_on_candidate_links_with_timebin_gdf.groupby(['link_id', 'time_bin_index']).agg(median=('speed', 'median')).reset_index()
-        
+        link_median_df = unique_ps_on_candidate_links_with_timebin_gdf.groupby(['link_id', 'time_bin_index']).agg(median=('speed', 'median')).reset_index()       
         self.link_score_df = link_median_df.merge(link_percentile95_df, on='link_id', how='left')
         self.link_score_df['score'] = self.link_score_df['median'] / self.link_score_df['percentile95']
 

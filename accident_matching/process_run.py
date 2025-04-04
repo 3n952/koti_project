@@ -235,16 +235,17 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
             if i > 4:
                 break
             result_link = result.iloc[i]
-            print(f'{i+1}순위 후보 링크 id: {result_link.name}')
-            
-        
+            print(f'{i+1}순위 후보 링크 id: {result_link.name}')         
+
+
 def main():
-    tass_data_path = 'tass_dataset/taas_100_400.csv'
+    tass_data_path = 'tass_dataset/taas_under_100.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
 
     accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
     accidentlinkmatching.run()
+
 
 if __name__ == '__main__':
     main()

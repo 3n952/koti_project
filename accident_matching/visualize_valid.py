@@ -99,13 +99,20 @@ def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
     plt.show(block=True)
 
 
-def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id: str):
+def visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_path):
     try:
         tass_sample_gdf = gpd.read_file(taas_sample_path, encoding='euc-kr')
     except UnicodeDecodeError as E:
         print(E)
         print('try decode for UTF-8')
         tass_sample_gdf = gpd.read_file(taas_sample_path, encoding='UTF-8')
+
+    # test dataset에 있는 sample의 link_id (= 샘플의 정답 링크)
+    sample_idx = tass_sample_gdf['field_1'].values[0]
+    test_df = pd.read_csv(test_dataset_path, encoding='euc-kr')
+    tass_sample = test_df.loc[int(sample_idx)]
+    answer_link_id = tass_sample['link_id'].astype(str)
+    print(f'answer link id: {answer_link_id}')
 
     tass_sample_gdf['geometry'] = tass_sample_gdf['geometry'].apply(wkt.loads)
     tass_sample_gdf = gpd.GeoDataFrame(tass_sample_gdf, geometry='geometry', crs='EPSG:5179')  # 좌표계 확인 필요
@@ -115,13 +122,13 @@ def visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id
     result = pd.read_csv('result/result_link_score.csv')
     result = result.sort_values(by="result_score", ascending=False)
     result['link_id'] = result['link_id'].astype(int).astype(str)
-    
+
     result_links = list()
     for i in range(len(result)):
         if i > 4:
             break
         result_link = result.iloc[i]
-        result_links.append(result_link['link_id']) # link_id: str
+        result_links.append(result_link['link_id'])
 
     if answer_link_id in result_links:
         print('사고링크맵매칭 top 5 중 정답이 있습니다.')
@@ -223,8 +230,6 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
     norm = mcolors.Normalize(vmin=values.min(), vmax=values.max())
     cmap = cm.RdYlGn_r
     colors = cmap(norm(values))
-
-    # GeoDataFrame plot 초기화
     # GeoDataFrame plot 초기화
     moct_network_link_gdf.plot(ax=ax, color='black', linewidth=2, alpha=0.3, label="MOCT Links (All)")
 
@@ -257,22 +262,31 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
     plt.show(block=True)
 
 
+def main(tass_sample_path, test_dataset_path, moct_network_path):
+    # accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
+    # accidentlinkmatching.run()
+    # check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
+    # visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
+    visualize_matching_links(tass_sample_path, test_dataset_path, moct_network_path)
+    sys.exit(0)
+
 if __name__ == '__main__':
 
-    tass_data_path = 'tass_dataset/taas_new.csv'
+    tass_data_path = 'tass_dataset/taas_under_100.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
     taas_sample_path = 'result/taas_sample.csv'
     gt_data_path = 'ground_truths/gt_20231211.csv'
     timebin_score_path = 'result/delta_score.csv'
     result_link_path = 'result/result_link_score.csv'
-    answer_link_id = '2250001300' 
+    answer_link_id = '1860007304'
 
     # accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
     # accidentlinkmatching.run()
     # check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
     # visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
-    visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id)
+    # visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id)
 
+    main(taas_sample_path, tass_data_path, moct_network_path)
     sys.exit(0)
 
