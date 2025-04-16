@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-import time
 
 
 def dt2unix(date_str):
@@ -13,6 +12,7 @@ def dt2unix(date_str):
     unix_time = int(dt.timestamp())
     return unix_time
 
+
 def ymd_spliter(ymd):
     '''
     ymd 20231211와 같은 형식 y, m, d로 분할
@@ -22,18 +22,18 @@ def ymd_spliter(ymd):
         y = ymd[:4]
         m = ymd[4:6]
         d = ymd[6:]
-    
     else:
         ymd = ymd.astype(str)
         return ymd_spliter(ymd)
-    
     return y, m, d
+
 
 def moct_link_list_maker(moct_file_path):
     '''
     moct의 특정 행정구역에 속하는 링크 id만 뽑아서 txt파일에 저장
     '''
     pass
+
 
 def recog_day(date_str: str, output_type: str = 'idx') -> datetime:
     '''
@@ -46,17 +46,16 @@ def recog_day(date_str: str, output_type: str = 'idx') -> datetime:
     if output_type == 'idx':
         result = date_obj.weekday()
     else:
-        result = date_obj.strftime("%A") 
+        result = date_obj.strftime("%A")
 
     return result
+
 
 def get_weekdays_in_same_week(date_str: str) -> list:
     """
     date string in 'YYYYMMDD' format이 주어지면 해당 날짜를 제외한 주중,주말에 대한 datetime 값을 반환함
-    
     Args:
         date_str (str): The date string in 'YYYYMMDD' format.
-    
     Returns:
         list: A list of up to 4 datetime objects (remaining weekdays in the same week).
     """
@@ -74,12 +73,12 @@ def get_weekdays_in_same_week(date_str: str) -> list:
 
     return weekdays  # Return the list of remaining weekdays
 
+
 def corresponding_sample_timecode_unixtime(date, hours):
     """
     Convert date in 'YYYYMMDD' format to Unix timestamps for specific time.
     Args:
-        date (str): str of date as integer (e.g., 20231211).
-    
+        date (str): str of date as integer (e.g., 20231211).   
     Returns:
         integer: Unix timestamps corresponding to specific time of date.
     """
@@ -91,6 +90,7 @@ def corresponding_sample_timecode_unixtime(date, hours):
     unix_time = int(dt.timestamp())
 
     return unix_time
+
 
 if __name__ == '__main__':
     date = '20231211'
