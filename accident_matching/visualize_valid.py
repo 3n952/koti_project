@@ -8,21 +8,20 @@ import matplotlib.colors as mcolors
 from shapely import wkt
 
 
-def visualize_candidate_links(final_candidate_links, moct_link_gdf, 
-                              link_ps_merge_near_acctime_gdf, tass_sample_gdf):
+def visualize_candidate_links(final_candidate_links, moct_link_gdf,
+                              link_ps_merge_near_acctime_gdf, taas_sample_gdf):
 
     candidate_links = set(final_candidate_links.keys())
     moct_link_gdf_filtered = moct_link_gdf[moct_link_gdf['link_id'].isin(candidate_links)]
-    link_ps_merge_near_acctime_gdf_filtered = link_ps_merge_near_acctime_gdf\
-        [link_ps_merge_near_acctime_gdf['link_id'].isin(candidate_links)]
-    tass_sample_gdf['buffer'] = tass_sample_gdf.geometry.buffer(300)
+    link_ps_merge_near_acctime_gdf_filtered = link_ps_merge_near_acctime_gdf[link_ps_merge_near_acctime_gdf['link_id'].isin(candidate_links)]
+    taas_sample_gdf['buffer'] = taas_sample_gdf.geometry.buffer(300)
 
     # 시각화
     fig, ax = plt.subplots(figsize=(10, 8))
     moct_link_gdf_filtered.plot(ax=ax, color='black', linewidth=2, alpha=0.2, label="Seoul Link")
     link_ps_merge_near_acctime_gdf_filtered.plot(ax=ax, color='green', markersize=1, alpha=0.7, label="DTG Trajectory")
-    tass_sample_gdf.plot(ax=ax, color='red', markersize=10, label="accident (Point)")
-    tass_sample_gdf['buffer'].plot(ax=ax, color='blue', alpha=0.3, edgecolor='blue')
+    taas_sample_gdf.plot(ax=ax, color='red', markersize=10, label="accident (Point)")
+    taas_sample_gdf['buffer'].plot(ax=ax, color='blue', alpha=0.3, edgecolor='blue')
 
     plt.legend()
     plt.title("candidate Link")
@@ -71,7 +70,7 @@ def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
             candidate_links[gt_link_id] = gt_point  # {link_id: Point(사고지점)} 형태로 저장
             print(f'taas와 반경 {radius1}(m)이내에 있는 ground Truth의 link_id : {gt_link_id}')
 
-    try: 
+    try:
         link_gdf = gpd.read_file(moct_link_path, encoding='euc-kr')
     except:
         link_gdf = gpd.read_file(moct_link_path, encoding='UTF-8')
@@ -80,15 +79,15 @@ def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
     link_gdf.set_crs(epsg=5179, inplace=True)
 
     link_gdf_near_taas = link_gdf[link_gdf['geometry'].distance(taas_point) <= 300]
-    gt_near_tass_link_id = set(candidate_links.keys()) # key 자료형 int
-    gt_near_tass_gdf = link_gdf[link_gdf['link_id'].astype(int).isin(gt_near_tass_link_id)]
+    gt_near_taas_link_id = set(candidate_links.keys()) # key 자료형 int
+    gt_near_taas_gdf = link_gdf[link_gdf['link_id'].astype(int).isin(gt_near_taas_link_id)]
 
     # 시각화
     fig, ax = plt.subplots(figsize=(10, 8))
     link_gdf_near_taas.plot(ax=ax, color='black', linewidth=2, alpha=0.3, label=f"Candidate Link near taas({radius2}m)")
     taas_sample_gdf['buffer2'].plot(ax=ax, facecolor='blue', edgecolor='red', alpha=0.3, label=f'{radius2}')
 
-    gt_near_tass_gdf.plot(ax=ax, color='green', linewidth=1, label=f"GT Link near taas({radius1}m)")
+    gt_near_taas_gdf.plot(ax=ax, color='green', linewidth=1, label=f"GT Link near taas({radius1}m)")
     taas_sample_gdf['buffer1'].plot(ax=ax, facecolor='blue', edgecolor='blue', alpha=0.3, label=f'{radius1}')
     ax.plot(x, y, 'ro', markersize=5, label="taas Point")
 
@@ -101,23 +100,23 @@ def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
 
 def visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_path):
     try:
-        tass_sample_gdf = gpd.read_file(taas_sample_path, encoding='euc-kr')
+        taas_sample_gdf = gpd.read_file(taas_sample_path, encoding='euc-kr')
     except UnicodeDecodeError as E:
         print(E)
         print('try decode for UTF-8')
-        tass_sample_gdf = gpd.read_file(taas_sample_path, encoding='UTF-8')
+        taas_sample_gdf = gpd.read_file(taas_sample_path, encoding='UTF-8')
 
     # test dataset에 있는 sample의 link_id (= 샘플의 정답 링크)
-    sample_idx = tass_sample_gdf['field_1'].values[0]
+    sample_idx = taas_sample_gdf['field_1'].values[0]
     test_df = pd.read_csv(test_dataset_path, encoding='euc-kr')
-    tass_sample = test_df.loc[int(sample_idx)]
-    answer_link_id = tass_sample['link_id'].astype(str)
+    taas_sample = test_df.loc[int(sample_idx)]
+    answer_link_id = taas_sample['link_id'].astype(str)
     print(f'answer link id: {answer_link_id}')
 
-    tass_sample_gdf['geometry'] = tass_sample_gdf['geometry'].apply(wkt.loads)
-    tass_sample_gdf = gpd.GeoDataFrame(tass_sample_gdf, geometry='geometry', crs='EPSG:5179')  # 좌표계 확인 필요
-    tass_sample_gdf['buffer'] = tass_sample_gdf.geometry.buffer(400)
-    buffer_union = tass_sample_gdf['buffer'].union_all()
+    taas_sample_gdf['geometry'] = taas_sample_gdf['geometry'].apply(wkt.loads)
+    taas_sample_gdf = gpd.GeoDataFrame(taas_sample_gdf, geometry='geometry', crs='EPSG:5179')  # 좌표계 확인 필요
+    taas_sample_gdf['buffer'] = taas_sample_gdf.geometry.buffer(100)
+    buffer_union = taas_sample_gdf['buffer'].union_all()
 
     result = pd.read_csv('result/result_link_score.csv')
     result = result.sort_values(by="result_score", ascending=False)
@@ -136,7 +135,7 @@ def visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_p
         print('사고링크맵매칭 top 5 중 정답이 없습니다.')
 
     # moct
-    try: 
+    try:
         moct_network_link_gdf = gpd.read_file(moct_network_path, encoding='euc-kr')
     except:
         moct_network_link_gdf = gpd.read_file(moct_network_path, encoding='UTF-8')
@@ -158,7 +157,7 @@ def visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_p
     ax.set_xticklabels([]); ax.set_yticklabels([])
 
     # Taas 포인트 
-    tass_sample_gdf.plot(ax=ax, color='red', markersize=35, label="Taas Point")
+    taas_sample_gdf.plot(ax=ax, color='red', markersize=35, label="Taas Point")
     # 정답 링크 그리기
     moct_link_gdf_answered.plot(ax=ax, color='red', linewidth=3, label="Answer Link")
 
@@ -175,9 +174,7 @@ def visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_p
                 ha='center', va='center')
 
     # Top 10 link_id 목록 (범례 느낌으로 텍스트 상자에 표시)
-    top10_labels = [
-    f"Top {idx+1}: {row['link_id']}" + (" (answer)" if row['link_id'] == answer_link_id else "")
-    for idx, row in moct_link_gdf_filtered.iterrows()]
+    top10_labels = [f"Top {idx + 1}: {row['link_id']}" + (" (answer)" if row['link_id'] == answer_link_id else "") for idx, row in moct_link_gdf_filtered.iterrows()]
     label_text = "\n".join(top10_labels)
     props = dict(boxstyle='round', facecolor='white', alpha=0.8)
     ax.text(1.02, 0.95, label_text, transform=ax.transAxes, fontsize=12,
@@ -198,7 +195,7 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
         taas_sample_gdf = gpd.read_file(taas_sample_path, encoding='UTF-8')
     taas_sample_gdf['geometry'] = taas_sample_gdf['geometry'].apply(wkt.loads)
     taas_sample_gdf = gpd.GeoDataFrame(taas_sample_gdf, geometry='geometry', crs='EPSG:5179')  # 좌표계 확인 필요
-    taas_sample_gdf['buffer'] = taas_sample_gdf.geometry.buffer(400)
+    taas_sample_gdf['buffer'] = taas_sample_gdf.geometry.buffer(100)
     buffer_union = taas_sample_gdf['buffer'].union_all()
 
     timebin_score_df = pd.read_csv(timebin_score_path)
@@ -262,31 +259,31 @@ def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_netwo
     plt.show(block=True)
 
 
-def main(tass_sample_path, test_dataset_path, moct_network_path):
-    # accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
+def vmain(taas_sample_path, test_dataset_path, moct_network_path):
+    # accidentlinkmatching = AccidentMapMatchingProcessor(taas_data_path, ps_data_path, moct_network_path)
     # accidentlinkmatching.run()
     # check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
     # visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
-    visualize_matching_links(tass_sample_path, test_dataset_path, moct_network_path)
+    visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_path)
     sys.exit(0)
+
 
 if __name__ == '__main__':
 
-    tass_data_path = 'tass_dataset/taas_under_100.csv'
+    taas_data_path = 'taas_dataset/taas_under_100.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
     taas_sample_path = 'result/taas_sample.csv'
     gt_data_path = 'ground_truths/gt_20231211.csv'
     timebin_score_path = 'result/delta_score.csv'
     result_link_path = 'result/result_link_score.csv'
-    answer_link_id = '1860007304'
+    answer_link_id = '3920214500'
 
-    # accidentlinkmatching = AccidentMapMatchingProcessor(tass_data_path, ps_data_path, moct_network_path)
+    # accidentlinkmatching = AccidentMapMatchingProcessor(taas_data_path, ps_data_path, moct_network_path)
     # accidentlinkmatching.run()
     # check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
     # visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
     # visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id)
 
-    main(taas_sample_path, tass_data_path, moct_network_path)
+    vmain(taas_sample_path, taas_data_path, moct_network_path)
     sys.exit(0)
-
