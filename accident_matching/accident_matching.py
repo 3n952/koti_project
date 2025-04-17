@@ -23,6 +23,7 @@ class AccidentDataPreprocessing:
         self.taas_data_path = taas_data_path
         self.ps_data_path = ps_data_path
         self.moct_network_path = moct_network_path
+        # TODO: 네트워크 반복 로드 문제 해결하기
         self.init_moct_network2gdf()
         self.init_taas_data2gdf()
 
@@ -36,7 +37,7 @@ class AccidentDataPreprocessing:
         # self.moct_link_gdf = moct_network_link_gdf[moct_network_link_gdf['sido_id'] == 11000]
         logging.info("MOCT 네트워크 데이터 로드 완료")
 
-    def ps_data2gdf(self, chunksize=10000000):
+    def ps_data2gdf(self, chunksize=1000000):
         '''
         ps 데이터를 CSV로 청크단위로 기본 전처리하여 gdf를 제네레이터로 반환
             :param chunksize: 청크 단위 사이즈
@@ -101,7 +102,7 @@ class AccidentDataPreprocessing:
         taas_sample_df = self.taas_df.sample(n=1)
 
         # 특정 사고 인덱스 기반 샘플링
-        # taas_sample_df = self.taas_df.iloc[[114]]
+        # taas_sample_df = self.taas_df.iloc[[858]]
 
         self.taas_sample_gdf = gpd.GeoDataFrame(taas_sample_df,
                                                 geometry=gpd.points_from_xy(taas_sample_df['x_crdnt_crdnt'],
@@ -215,6 +216,7 @@ class AccidentMatching():
             sorted_values = series.sort_values().values  # 정렬
             index = int(len(sorted_values) * 0.95)  # 95% 위치 찾기
             return sorted_values[min(index, len(sorted_values) - 1)]  # 가장 가까운 인덱스 값 반환
+
         unique_ps_on_candidate_links_with_timebin_gdf = ps_on_candidate_links_gdf.sort_values(by=['link_id', 'trip_id', 'speed']).\
             groupby(['link_id', 'trip_id', 'time_bin_index']).first().reset_index()
 
@@ -228,11 +230,3 @@ class AccidentMatching():
         self.link_score_df['score'] = self.link_score_df['median'] / self.link_score_df['percentile95']
 
         return self.link_score_df
-
-
-if __name__ == '__main__':
-    taas_data_path = 'taas_dataset/taas_new.csv'
-    ps_data_path = 'traj_sample/alltraj_20231211.txt'
-    moct_network_path = 'moct_link/link'
-    test = AccidentDataPreprocessing(taas_data_path, ps_data_path, moct_network_path)
-    test.remain_days_traj(preprocessing_on_local=True)
