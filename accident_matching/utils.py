@@ -78,7 +78,7 @@ def corresponding_sample_timecode_unixtime(date, hours):
     """
     Convert date in 'YYYYMMDD' format to Unix timestamps for specific time.
     Args:
-        date (str): str of date as integer (e.g., 20231211).   
+        date (str): str of date as integer (e.g., 20231211).
     Returns:
         integer: Unix timestamps corresponding to specific time of date.
     """
@@ -90,13 +90,3 @@ def corresponding_sample_timecode_unixtime(date, hours):
     unix_time = int(dt.timestamp())
 
     return unix_time
-
-
-if __name__ == '__main__':
-    date = '20231211'
-    hours = '07'
-    hour = int(hours)
-    print(hour)
-
-    ut = corresponding_sample_timecode_unixtime(date, hour)
-    print(ut)
