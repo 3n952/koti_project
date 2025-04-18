@@ -4,11 +4,24 @@ import geopandas as gpd
 from tqdm import tqdm
 
 
-def check_isvalid_data():
+# TODO: 기능 구현
+def check_valid_dtg(candidate_links: set, input_df: gpd.GeoDataFrame):
     '''
     매칭 모듈 정확도 향상을 위해 비교적 완전한 데이터인지 검증
+    args:
+        trip_df: network에 올라간 ps 데이터 dataFrame
     '''
-    pass
+    trip_counts = input_df.groupby(['link_id', 'time_bin_index'])['trip_id'].nunique().reset_index(name='trip_count')
+    # trip_count가 5 초과인 경우만 추출
+    filtered_counts = trip_counts[trip_counts['trip_count'] > 5]
+    # 각 link_id가 몇 개의 time_bin_index에서 조건을 만족했는지 계산
+    valid_links = filtered_counts.groupby('link_id').size()
+
+    # 사용가능 한 링크 파악
+    valid_links = set(valid_links[valid_links >= 6].index)
+
+    if candidate_links != valid_links:
+        raise MatchingInvalidError()
 
 
 def save_dd2taas(gt_fname, save_path):
@@ -84,3 +97,15 @@ def save_interested_links(tass_data_path, moct_network_path, save_path):
             f.write(f"{lid}\n")
 
     print(f"링크 ID가 저장 완료: {save_path}")
+
+
+class MatchingInvalidError(Exception):
+    '''
+    후보 링크 내의 DTG 데이터가 점수 산출에 유효하지 않다고 판단될 때 발생하는 에러
+    '''
+    def __init__(self):
+        self.message = 'invalid DTG data'
+        super().__init__(self.message)  # Exception 클래스 초기화
+
+    def __str__(self):
+        return f"[MatchingInvalidError] {self.message}"
