@@ -7,6 +7,7 @@ import numpy as np
 import warnings
 
 from utils import get_weekdays_in_same_week
+from core import check_valid_dtg, MatchingInvalidError
 from accident_matching import AccidentMatching, AccidentDataPreprocessing
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -17,6 +18,15 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
     def __init__(self, taas_data_path: str, ps_data_path: str, moct_network_path: str):
         AccidentDataPreprocessing.__init__(self, taas_data_path, ps_data_path, moct_network_path)
         AccidentMatching.__init__(self, radius=100)
+        self._ignore_error = True
+
+    @property
+    def error_ignore(self):
+        return self._ignore_error
+
+    @error_ignore.setter
+    def error_ignore(self, value: bool):
+        self._ignore_error = value
 
     def get_data_size(self, chunk=1000000):
         with open(self.ps_data_path, 'r', encoding='utf-8') as f:
@@ -30,8 +40,11 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
         '''
         total_chunk_size = self.get_data_size()
         self.get_candidate_links(self.taas_sample_gdf, self.moct_link_gdf)
-        self.accident_day_df = gpd.GeoDataFrame(columns=['link_id', 'trip_id', 'pointTime', 'speed', 'geometry', 'time_bin_index'],
-                                                geometry='geometry', crs="EPSG:5179")
+        self.accident_day_df = gpd.GeoDataFrame(
+            columns=['link_id', 'trip_id', 'pointTime', 'speed', 'geometry', 'time_bin_index'],
+            geometry='geometry',
+            crs="EPSG:5179"
+        )
 
         for ps_near_chunk in tqdm(self.link_ps_merge_sampling(),
                                   total=total_chunk_size,
@@ -42,6 +55,15 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
                 link_ps_merge_near_acctime_gdf=ps_near_chunk
             )
             self.accident_day_df = pd.concat([self.accident_day_df, ps_on_candidate_links_with_timebin_gdf], ignore_index=True)
+
+        if self.error_ignore:
+            try:
+                check_valid_dtg(candidate_links=self.candidate_links, input_df=self.accident_day_df)
+            except MatchingInvalidError:
+                print('**[WARNING]** DTG 데이터가 부족하여 정확한 점수를 산출할 수 없습니다.')
+        else:
+            check_valid_dtg(candidate_links=self.candidate_links, input_df=self.accident_day_df)
+
         logging.info(f"사고 당일 데이터 로드 완료. 결과: 총 {len(self.accident_day_df)}개 데이터 포인트 추출")
 
     def get_other_days_score(self, save_score=False):
@@ -74,6 +96,15 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
                     link_ps_merge_near_acctime_gdf=other_ps_chunk
                 )
                 self.other_day_df = pd.concat([self.other_day_df, ps_on_candidate_links_with_timebin_gdf], ignore_index=True)
+
+            if self.error_ignore:
+                try:
+                    check_valid_dtg(candidate_links=self.candidate_links, input_df=self.other_day_df)
+                except MatchingInvalidError:
+                    print('**[WARNING]** DTG 데이터가 부족하여 정확한 점수를 산출할 수 없습니다.')
+            else:
+                check_valid_dtg(candidate_links=self.candidate_links, input_df=self.accident_day_df)
+
             other_day_score = self.candidate_link_score(ps_on_candidate_links_gdf=self.other_day_df)
             if save_score:
                 other_day_score.to_csv(f'score/other_day_score{idx_day + 1}.csv', index=False)
@@ -252,6 +283,7 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
 
             # 사고 예상 시점 (diff_0to1 ~ diff_8to9)
             interest_cols = [col for col in final_score.columns if 'diff_' in col and 'to' in col and int(col.split('_')[1].split('to')[0]) >= 0]
+            # 사고 예상 timebin 내의 z-score 최대값
             max_score = final_score[interest_cols].max(axis=1, skipna=True)
             result = pd.DataFrame({
                 "result_score": max_score
@@ -262,24 +294,26 @@ class AccidentMapMatchingProcessor(AccidentDataPreprocessing, AccidentMatching):
     def run(self):
         # link: zscore 형태의 df
         result = self.mapmatching_result(from_saved=False)
-        result.to_csv('result/result_link_score.csv', encoding='cp949')
+        result.to_csv('result/final_score.csv', encoding='cp949')
         confidence = self.get_confidence_from_zscore(result)
         confidence.to_csv('result/confidence_score.csv', encoding='cp949')
 
         result = result.reset_index()
         final_df = pd.merge(result, confidence, on='link_id', how='inner')
         final_df = final_df.sort_values(by="result_score", ascending=False)
+        final_df.to_csv('result/results.csv', encoding='cp949')
 
         print('<사고-링크 구간 매칭 예측 링크>')
-        print(f"Top 1 링크 id: {final_df.iloc[0]['link_id']}  confidence: {final_df.iloc[0]['confidence']:.2f}")
+        print(f"Top 1 예측 링크 id: {final_df.iloc[0]['link_id']}  confidence: {final_df.iloc[0]['confidence']:.2f}")
 
 
 def main():
-    taas_data_path = 'taas_dataset/20231211.csv'
-    ps_data_path = 'traj_sample/alltraj_20231211.txt'
+    taas_data_path = 'taas_dataset/20231212.csv'
+    ps_data_path = 'traj_sample/alltraj_20231212.txt'
     moct_network_path = 'moct_link/link'
 
     accidentlinkmatching = AccidentMapMatchingProcessor(taas_data_path, ps_data_path, moct_network_path)
+    accidentlinkmatching.error_ignore = True
     accidentlinkmatching.run()
 
 
