@@ -7,7 +7,7 @@ import geopandas as gpd
 import warnings
 
 from process_run import AccidentMapMatchingProcessor
-
+from core import MatchingInvalidError
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
@@ -53,8 +53,9 @@ def evaluate(data: pd.DataFrame, processor_instance: AccidentMapMatchingProcesso
     '''
     recall@5, recall@1에 대한 평가지표를 산출
     '''
-    # top5_answer_count = 0.0
+    top5_answer_count = 0.0
     top1_answer_count = 0.0
+    invalid_count = 0
 
     for idx, (_, row) in enumerate(data.iterrows()):
         answer_link_id = str(row['link_id'])
@@ -74,34 +75,51 @@ def evaluate(data: pd.DataFrame, processor_instance: AccidentMapMatchingProcesso
             processor_instance.uptime = taas_sample_timestamp + 5400
             processor_instance.downtime = taas_sample_timestamp - 1800
             processor_instance.timecode = taas_sample_timecode
-            result = processor_instance.mapmatching_result(from_saved=False)
+            try:
+                result = processor_instance.mapmatching_result(from_saved=False)
+            except MatchingInvalidError:
+                invalid_count += 1
+                continue
 
         result = result.reset_index()
-        # top5_answer_count += recall_topN(n=5, ground_truth=answer_link_id, prediction_df=result)
+        top5_answer_count += recall_topN(n=5, ground_truth=answer_link_id, prediction_df=result)
         top1_answer_count += recall_topN(n=1, ground_truth=answer_link_id, prediction_df=result)
 
-        # metric_top5 = top5_answer_count / (idx + 1)
-        metric_top1 = top1_answer_count / (idx + 1)
-        # logging.info(f'[{idx + 1}번째 샘플까지]\nrecall@5: {metric_top5}\trecall@1: {metric_top1}')
-        logging.info(f'[{idx + 1}번째 샘플까지] recall@1: {metric_top1:.2f}')
-    # metric_result_top5 = top5_answer_count / total_volume
-    metric_result_top1 = top1_answer_count / total_volume
+        metric_top5 = top5_answer_count / (idx + 1 - invalid_count)
+        metric_top1 = top1_answer_count / (idx + 1 - invalid_count)
+        logging.info(f'[{idx + 1}번째 샘플까지의 누적 평가지표 결과]\nrecall@5: {metric_top5}\trecall@1: {metric_top1}')
+        # logging.info(f'[{idx + 1}번째 샘플까지] recall@1: {metric_top1:.2f}')
+    metric_result_top5 = top5_answer_count / (total_volume - invalid_count)
+    metric_result_top1 = top1_answer_count / (total_volume - invalid_count)
 
-    return metric_result_top1
+    return metric_result_top5, metric_result_top1
 
 
 if __name__ == '__main__':
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    taas_data_path = 'taas_dataset/test.csv'
-    ps_data_path = 'traj_sample/alltraj_20231213.txt'
+    start_ymd = 20231211
     moct_network_path = 'moct_link/link'
-    taas_sample = pd.read_csv(taas_data_path, encoding='cp949')
-    total_volume = int(len(taas_sample))
-    accidentlinkmatching = AccidentMapMatchingProcessor(taas_data_path, ps_data_path, moct_network_path)
 
-    # 지표 계산
-    logging.info(f'총 {total_volume}개 테스트 샘플에 대한 평가지표 산출중')
-    metric_result_top1 = evaluate(data=taas_sample, processor_instance=accidentlinkmatching, total_volume=total_volume)
-    logging.info(f"총 {total_volume}개의 테스트 샘플에 대한 평가지표 산출 완료.\nrecall@1: {metric_result_top1}")
+    result_top1_list = []
+    resutl_top5_list = []
+
+    for i in range(3):
+        taas_data_path = f'taas_dataset/{str(start_ymd + i)}.csv'
+        ps_data_path = f'traj_sample/alltraj_{str(start_ymd + i)}.txt'
+        taas_sample = pd.read_csv(taas_data_path, encoding='cp949')
+        total_volume = int(len(taas_sample))
+        accidentlinkmatching = AccidentMapMatchingProcessor(taas_data_path, ps_data_path, moct_network_path)
+        accidentlinkmatching.error_ignore = False
+
+        # 지표 계산
+        logging.info(f'총 {total_volume}개 테스트 샘플에 대한 평가지표 산출중')
+        metric_result_top5, metric_result_top1 = evaluate(data=taas_sample, processor_instance=accidentlinkmatching, total_volume=total_volume)
+        logging.info(f"총 {total_volume}개의 테스트 샘플에 대한 평가지표 산출 완료.\nrecall@1: {metric_result_top1:.2f}\trecall@5: {metric_result_top5:.2f}")
+
+        result_top1_list.append(metric_result_top1)
+        resutl_top5_list.append(metric_result_top5)
+
+    print(result_top1_list)
+    print(resutl_top5_list)
