@@ -23,7 +23,7 @@ class AccidentDataPreprocessing:
         self.taas_data_path = taas_data_path
         self.ps_data_path = ps_data_path
         self.moct_network_path = moct_network_path
-        # TODO: 네트워크 반복 로드 문제 해결하기
+        # TODO: 네트워크 반복 로드 문제 해결하기, 초기화 과정 바꾸기 ex. self.moct_network_gdf = self.load_network(moct_network_path)
         self.init_moct_network2gdf()
         self.init_taas_data2gdf()
 
@@ -33,9 +33,29 @@ class AccidentDataPreprocessing:
         moct_network_link_gdf = moct_network_link_gdf[['link_id', 'road_rank', 'sido_id', 'sgg_id', 'geometry']]
         moct_network_link_gdf.set_crs(epsg=5179, inplace=True)
         self.moct_link_gdf = moct_network_link_gdf
-        # 지역 필터링 (서울시)
-        # self.moct_link_gdf = moct_network_link_gdf[moct_network_link_gdf['sido_id'] == 11000]
         logging.info("MOCT 네트워크 데이터 로드 완료")
+
+    # TODO: taas 경우 / 돌발 상황 정보의 경우 구분하기 -> 주석처리된 부분 처리
+    def init_taas_data2gdf(self):
+        logging.info("사고 데이터(taas) 로드 중..")
+        try:
+            taas_dataset = pd.read_csv(self.taas_data_path, encoding='cp949')
+        except UnicodeDecodeError:
+            taas_dataset = pd.read_csv(self.taas_data_path, encoding='UTF-8')
+
+        taas_df = taas_dataset[['acdnt_dd_dc', 'occrrnc_time_dc', 'x_crdnt_crdnt', 'y_crdnt_crdnt']]
+        taas_df.loc[:, 'occrrnc_time_dc'] = taas_df['occrrnc_time_dc'].str.replace('시', '', regex=True)  # timecode
+
+        # 날짜와 시간을 결합하여 datetime 형식 변환
+        # unixtime 변환
+        taas_df.loc[:, 'datetime'] = pd.to_datetime(taas_df['acdnt_dd_dc'] + ' ' + taas_df['occrrnc_time_dc'] + ':00:00')
+        # KST 기준 맞추기
+        taas_df.loc[:, 'unixtime'] = taas_df['datetime'].astype('int64') // 10**9 - (9 * 3600)
+
+        self.taas_df = taas_df
+        logging.info("사고 데이터(taas) 로드 완료")
+        self.taas_sampling()
+        logging.info(f"사고 데이터(taas) 샘플 추출 완료\n<====================사고 샘플 데이터 info====================>\n{self.taas_sample_gdf.head()}")
 
     def ps_data2gdf(self, chunksize=1000000):
         '''
@@ -44,9 +64,7 @@ class AccidentDataPreprocessing:
             :yield: 기본 전처리된 ps의 gdf타입의 데이터
         '''
         columns = ['trip_id', 'pointTime', 'pointX', 'pointY', 'link_id', 'speed']
-        for ps_dataset in pd.read_csv(self.ps_data_path,
-                                      names=columns,
-                                      chunksize=chunksize):
+        for ps_dataset in pd.read_csv(self.ps_data_path, names=columns, chunksize=chunksize):
             # 좌표를 geometry로 변환
             ps_dataset['geometry'] = gpd.points_from_xy(ps_dataset['pointX'], ps_dataset['pointY'])
             # GeoDataFrame 변환
@@ -58,40 +76,8 @@ class AccidentDataPreprocessing:
 
             yield ps_gdf  # 제네레이터로 반환
 
-    # TODO: taas 경우 / 돌발 상황 정보의 경우 구분하기 -> 주석처리된 부분 처리
-    def init_taas_data2gdf(self):
-        logging.info("사고 데이터(taas) 로드 중..")
-        try:
-            taas_dataset = pd.read_csv(self.taas_data_path, encoding='cp949')
-        except UnicodeDecodeError:
-            taas_dataset = pd.read_csv(self.taas_data_path, encoding='UTF-8')
-        # taas_df = taas_dataset[['acdnt_no', 'acdnt_dd_dc', 'occrrnc_time_dc', 'legaldong_name', 'x_crdnt_crdnt',
-        #                                     'y_crdnt_crdnt', 'acdnt_gae_dc', 'wrngdo_vhcle_asort_dc',
-        #                                     'dmge_vhcle_asort_dc', 'road_div']]
-        taas_df = taas_dataset[['acdnt_dd_dc', 'occrrnc_time_dc', 'x_crdnt_crdnt', 'y_crdnt_crdnt']]
-        taas_df.loc[:, 'occrrnc_time_dc'] = taas_df['occrrnc_time_dc'].str.replace('시', '', regex=True)  # timecode
-        # taas_df.loc[:, 'legaldong_name'] = taas_df['legaldong_name'].apply(
-        #     lambda x: next((district for district in x.split() if '시' in district), '')
-        #     )
-        # 날짜와 시간을 결합하여 datetime 형식 변환
-        # unixtime 변환
-        taas_df.loc[:, 'datetime'] = pd.to_datetime(taas_df['acdnt_dd_dc'] + ' ' + taas_df['occrrnc_time_dc'] + ':00:00')
-        # KST 기준 맞추기
-        taas_df.loc[:, 'unixtime'] = taas_df['datetime'].astype('int64') // 10**9 - (9 * 3600)
-
-        # 조건 필터링 - 서울 / 중상,사망 사고 / 승용, 승합, 화물
-        # taas_df = taas_df[taas_df['legaldong_name'] == '서울특별시']
-        # taas_df = taas_df[(taas_df['acdnt_gae_dc'].isin(['중상사고', '사망사고']))]
-        # taas_df = taas_df[(taas_df['wrngdo_vhcle_asort_dc'].isin(['승용', '승합', '화물'])) |
-        #                                   (taas_df['dmge_vhcle_asort_dc'].isin(['승용', '승합', '화물']))]
-
-        self.taas_df = taas_df
-        logging.info("사고 데이터(taas) 로드 완료")
-        self.taas_sampling()
-        logging.info(f"사고 데이터(taas) 샘플 추출 완료\n<====================사고 샘플 데이터 info====================>\n{self.taas_sample_gdf.head()}")
-
     # TODO: 랜덤 샘플링 추출 / 특정 인덱스 샘플링 추출 기능 복합적으로 구현하기
-    def taas_sampling(self):
+    def taas_sampling(self, seed=33):
         ymd = self.ps_data_path.split('/')[1].split('.')[0][-8:]
         y, m, d = ymd_spliter(ymd)
         # 시간 필터링
@@ -99,7 +85,7 @@ class AccidentDataPreprocessing:
         self.taas_df = self.taas_df[self.taas_df['unixtime'].between(dt2unix(f'{y}-{m}-{d} 00:00:00'),
                                                                      dt2unix(f'{y}-{m}-{d} 23:59:59'))]
         # 특정 사고 랜덤 샘플링
-        taas_sample_df = self.taas_df.sample(n=1)
+        taas_sample_df = self.taas_df.sample(n=1, random_state=seed)
 
         # 특정 사고 인덱스 기반 샘플링
         # taas_sample_df = self.taas_df.iloc[[858]]
@@ -111,7 +97,6 @@ class AccidentDataPreprocessing:
         self.taas_sample_gdf.to_csv('result/taas_sample.csv')
         taas_sample_timestamp = self.taas_sample_gdf['unixtime'].iloc[0]
         taas_sample_timecode = self.taas_sample_gdf['occrrnc_time_dc'].astype(int).iloc[0]
-
         self.uptime = taas_sample_timestamp + 5400
         self.downtime = taas_sample_timestamp - 1800
         self.timecode = taas_sample_timecode
@@ -123,13 +108,12 @@ class AccidentDataPreprocessing:
 
     def merge_link_ps(self):
         '''
-        국내 전체에 분포된 ps 포인트를 관심영역을 지정한 link에 매칭
+        국내 전체에 분포된 ps 포인트를 network link에 매칭
         '''
         for ps_chunk_df in self.ps_data2gdf():
             link_ps_merge_gdf = pd.merge(ps_chunk_df, self.moct_link_gdf, on='link_id', how='inner')
             link_ps_merge_gdf = link_ps_merge_gdf[['link_id', 'trip_id', 'pointTime', 'speed', 'geometry_x']]
             link_ps_merge_gdf = link_ps_merge_gdf.rename(columns={'geometry_x': 'geometry'})
-
             yield link_ps_merge_gdf
 
     def link_ps_merge_sampling(self):
@@ -159,7 +143,7 @@ class AccidentDataPreprocessing:
             print('add code')
 
 
-class AccidentMatching():
+class AccidentMatching:
     def __init__(self, radius):
         self.radius = radius
 
@@ -200,6 +184,7 @@ class AccidentMatching():
 
     def candidate_links_with_timebin(self, new_timestamp, link_ps_merge_near_acctime_gdf):
         self.ps_on_candidate_links_gdf = link_ps_merge_near_acctime_gdf[link_ps_merge_near_acctime_gdf['link_id'].isin(self.candidate_links)]
+        # TODO: copy()필요성 검증하기: 메모리 누수 문제
         ps_on_candidate_links_gdf = self.ps_on_candidate_links_gdf.copy()
 
         # 10분 간격으로 몇 번째 구간(인덱스)에 속하는지 계산
