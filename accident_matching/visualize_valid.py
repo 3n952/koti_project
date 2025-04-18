@@ -79,7 +79,7 @@ def check_ground_truth(gt_path, moct_link_path, taas_sample_path):
     link_gdf.set_crs(epsg=5179, inplace=True)
 
     link_gdf_near_taas = link_gdf[link_gdf['geometry'].distance(taas_point) <= 300]
-    gt_near_taas_link_id = set(candidate_links.keys()) # key 자료형 int
+    gt_near_taas_link_id = set(candidate_links.keys())  # key 자료형 int
     gt_near_taas_gdf = link_gdf[link_gdf['link_id'].astype(int).isin(gt_near_taas_link_id)]
 
     # 시각화
@@ -118,9 +118,12 @@ def visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_p
     taas_sample_gdf['buffer'] = taas_sample_gdf.geometry.buffer(100)
     buffer_union = taas_sample_gdf['buffer'].union_all()
 
-    result = pd.read_csv('result/result_link_score.csv')
+    result = pd.read_csv('result/final_score.csv')
     result = result.sort_values(by="result_score", ascending=False)
     result['link_id'] = result['link_id'].astype(int).astype(str)
+
+    if result['result_score'].isna().all():
+        raise ValueError("점수가 산출되지 않아(모든 값이 NaN) 시각화 할 수 없습니다.")
 
     result_links = list()
     for i in range(len(result)):
@@ -145,7 +148,7 @@ def visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_p
     moct_network_link_gdf = moct_network_link_gdf_og[moct_network_link_gdf_og.geometry.intersects(buffer_union)]
 
     moct_link_gdf_filtered = moct_network_link_gdf_og[moct_network_link_gdf_og['link_id'].isin(result_links)]
-    moct_link_gdf_filtered = moct_link_gdf_filtered.merge(result, on="link_id",  how="inner")
+    moct_link_gdf_filtered = moct_link_gdf_filtered.merge(result, on="link_id", how="inner")
     # 높은순 재정렬
     moct_link_gdf_filtered = moct_link_gdf_filtered.sort_values("result_score", ascending=False).reset_index(drop=True)
 
@@ -153,15 +156,17 @@ def visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_p
 
     # 시각화
     fig, ax = plt.subplots(figsize=(15, 10))
-    ax.set_xticks([]); ax.set_yticks([])
-    ax.set_xticklabels([]); ax.set_yticklabels([])
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
 
-    # Taas 포인트 
+    # Taas 포인트
     taas_sample_gdf.plot(ax=ax, color='red', markersize=35, label="Taas Point")
     # 정답 링크 그리기
     moct_link_gdf_answered.plot(ax=ax, color='red', linewidth=3, label="Answer Link")
 
-    # 기존 moctlink in buffer 그리기 
+    # 기존 moctlink in buffer 그리기
     moct_network_link_gdf.plot(ax=ax, color='black', linewidth=2, alpha=0.3, label="MOCT Links")
     # Top 5 링크는 파란색으로 그리기
     moct_link_gdf_filtered.plot(ax=ax, color='blue', linewidth=2, alpha=0.7, label="Top 5 Links")
@@ -173,22 +178,22 @@ def visualize_matching_links(taas_sample_path, test_dataset_path, moct_network_p
                 fontsize=10, fontweight='bold', color='black',
                 ha='center', va='center')
 
-    # Top 10 link_id 목록 (범례 느낌으로 텍스트 상자에 표시)
+    # Top N link_id 목록 (범례 느낌으로 텍스트 상자에 표시)
     top10_labels = [f"Top {idx + 1}: {row['link_id']}" + (" (answer)" if row['link_id'] == answer_link_id else "") for idx, row in moct_link_gdf_filtered.iterrows()]
     label_text = "\n".join(top10_labels)
     props = dict(boxstyle='round', facecolor='white', alpha=0.8)
-    ax.text(1.02, 0.95, label_text, transform=ax.transAxes, fontsize=12,
+    ax.text(1.02, 0.95, label_text, transform=ax.transAxes, fontsize=15,
             verticalalignment='top', bbox=props)
     # 제목 & 범례
     ax.set_aspect('auto', adjustable='box')
-    ax.set_title("Top 5 Candidate Links", fontsize=12)
-    ax.legend(loc='lower left')
+    # ax.set_title("Top 5 Candidate Links", fontsize=12)
+    ax.legend(loc='lower left', fontsize=15)
+    plt.savefig("assets/figure.png", dpi=200, bbox_inches='tight', pad_inches=.2)
     plt.tight_layout()
     plt.show(block=True)
 
 
 def visualize_score_per_timebin(taas_sample_path, timebin_score_path, moct_network_path):
-
     try:
         taas_sample_gdf = gpd.read_file(taas_sample_path, encoding='euc-kr')
     except:
@@ -270,20 +275,14 @@ def vmain(taas_sample_path, test_dataset_path, moct_network_path):
 
 if __name__ == '__main__':
 
-    taas_data_path = 'taas_dataset/taas_under_100.csv'
+    taas_data_path = 'taas_dataset/20231211.csv'
     ps_data_path = 'traj_sample/alltraj_20231211.txt'
     moct_network_path = 'moct_link/link'
     taas_sample_path = 'result/taas_sample.csv'
     gt_data_path = 'ground_truths/gt_20231211.csv'
     timebin_score_path = 'result/delta_score.csv'
-    result_link_path = 'result/result_link_score.csv'
+    result_link_path = 'result/final_score.csv'
     answer_link_id = '3920214500'
-
-    # accidentlinkmatching = AccidentMapMatchingProcessor(taas_data_path, ps_data_path, moct_network_path)
-    # accidentlinkmatching.run()
-    # check_ground_truth(gt_data_path, moct_network_path, taas_sample_path)
-    # visualize_score_per_timebin(taas_sample_path,timebin_score_path, moct_network_path)
-    # visualize_matching_links(taas_sample_path, moct_network_path, answer_link_id)
 
     vmain(taas_sample_path, taas_data_path, moct_network_path)
     sys.exit(0)
